@@ -7,35 +7,39 @@
 <title>Coca-Cola Bottle Verification</title>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <style>
-body{font-family:Arial,sans-serif;max-width:600px;margin:25px auto;padding:16px;color:#222}
+body{font-family:Arial,sans-serif;max-width:600px;margin:20px auto;padding:16px;color:#222}
 h1{color:#c8102e;font-size:25px}
 button,input{font-size:16px;margin:8px 0;padding:12px;max-width:100%}
 button{background:#c8102e;color:white;border:0;border-radius:6px}
 .panel{background:#f5f5f5;padding:14px;border-radius:8px;margin:12px 0;overflow-wrap:anywhere}
-#result{white-space:pre-wrap;overflow-wrap:anywhere}
+#placeName{font-size:18px;font-weight:bold;color:#176b36}
+pre{white-space:pre-wrap;overflow-wrap:anywhere}
 </style>
 </head>
 <body>
 <h1>Coca-Cola Bottle Verification</h1>
-<p>GPS location is required before a bottle can be verified.</p>
+<p>Your GPS location is required before a bottle can be verified.</p>
 
 <div class="panel">
-<h3>1. Obtain GPS location</h3>
-<button id="gpsButton">Allow GPS Location</button>
-<p id="gpsStatus">Waiting for location permission.</p>
+<h3>1. Detect your location</h3>
+<button id="gpsButton">Detect GPS Location</button>
+<p id="gpsStatus">Waiting for GPS permission.</p>
+<p id="placeName"></p>
 <p id="coordinates"></p>
 </div>
 
 <div class="panel">
 <h3>2. Upload the bottle QR image</h3>
 <input type="file" id="qrFile" accept="image/*" disabled>
-<p id="scanStatus">Obtain GPS location first.</p>
+<p id="scanStatus">Detect your location first.</p>
 </div>
 
 <div class="panel">
 <h3>3. Verification result</h3>
 <pre id="result">No verification performed.</pre>
 </div>
+
+<div id="qr-reader" style="position:absolute;left:-9999px;width:300px"></div>
 
 <script>
 const FUNCTION_URL =
@@ -48,6 +52,7 @@ let gps = null;
 
 const gpsButton = document.getElementById("gpsButton");
 const gpsStatus = document.getElementById("gpsStatus");
+const placeName = document.getElementById("placeName");
 const coordinates = document.getElementById("coordinates");
 const qrFile = document.getElementById("qrFile");
 const scanStatus = document.getElementById("scanStatus");
@@ -56,49 +61,86 @@ const result = document.getElementById("result");
 gpsButton.addEventListener("click", () => {
   gps = null;
   qrFile.disabled = true;
-  result.textContent = "Waiting for GPS location...";
-  gpsStatus.textContent = "Requesting permission...";
+  placeName.textContent = "";
   coordinates.textContent = "";
+  result.textContent = "Waiting for GPS...";
+  gpsStatus.textContent = "Requesting your location...";
 
   if (!window.isSecureContext || !navigator.geolocation) {
     gpsStatus.textContent =
-      "GPS is unavailable here. Open the published HTTPS GitHub Pages URL in Chrome.";
+      "GPS unavailable. Open the published HTTPS page in Chrome.";
     return;
   }
 
-  navigator.geolocation.getCurrentPosition(
-    position => {
-      gps = {
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude
-      };
+  navigator.geolocation.getCurrentPosition(async position => {
+    gps = {
+      latitude: position.coords.latitude,
+      longitude: position.coords.longitude
+    };
 
-      gpsStatus.textContent = "GPS location obtained.";
-      coordinates.textContent =
-        "Latitude: " + gps.latitude.toFixed(6) +
-        "\nLongitude: " + gps.longitude.toFixed(6) +
-        "\nAccuracy: approximately " +
-        Math.round(position.coords.accuracy) + " metres";
+    coordinates.textContent =
+      "Latitude: " + gps.latitude.toFixed(6) +
+      "\nLongitude: " + gps.longitude.toFixed(6) +
+      "\nGPS accuracy: approximately " +
+      Math.round(position.coords.accuracy) + " metres";
 
-      qrFile.disabled = false;
-      scanStatus.textContent = "You can now upload the QR image.";
-      result.textContent = "Ready to verify.";
-    },
-    error => {
-      const messages = {
-        1: "Permission denied. Allow location for this site in Chrome settings.",
-        2: "Location unavailable. Turn on your phone's Location setting and retry.",
-        3: "Location request timed out. Please retry."
-      };
+    gpsStatus.textContent = "GPS coordinates detected.";
+    placeName.textContent = "Finding place name...";
+    result.textContent = "GPS obtained. Preparing verification.";
 
-      gps = null;
-      qrFile.disabled = true;
-      gpsStatus.textContent =
-        messages[error.code] || "Could not obtain location.";
-      result.textContent = "Verification blocked: GPS is required.";
-    },
-    { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
-  );
+    try {
+      const url = "https://nominatim.openstreetmap.org/reverse" +
+        "?format=jsonv2&lat=" + gps.latitude +
+        "&lon=" + gps.longitude +
+        "&zoom=18&addressdetails=1";
+
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Address lookup unavailable");
+
+      const data = await response.json();
+      const a = data.address || {};
+
+      const parts = [
+        a.road || a.pedestrian || a.neighbourhood || a.suburb,
+        a.city || a.town || a.village || a.county,
+        a.state,
+        a.country
+      ].filter(Boolean);
+
+      placeName.textContent = parts.length
+        ? "Detected place: " + [...new Set(parts)].join(", ")
+        : "Coordinates detected; no readable place name returned.";
+
+      if (data.display_name) {
+        placeName.title = data.display_name;
+      }
+    } catch (error) {
+      placeName.textContent =
+        "Place-name lookup unavailable. GPS coordinates are still available.";
+    }
+
+    qrFile.disabled = false;
+    scanStatus.textContent =
+      "Upload the QR image when you are ready to verify.";
+
+  }, error => {
+    gps = null;
+    qrFile.disabled = true;
+
+    const messages = {
+      1: "Location permission denied. Allow location access in Chrome.",
+      2: "Location unavailable. Turn on your phone's location setting.",
+      3: "GPS timed out. Try again."
+    };
+
+    gpsStatus.textContent =
+      messages[error.code] || "Could not detect GPS location.";
+    result.textContent = "Verification blocked: GPS is required.";
+  }, {
+    enableHighAccuracy: true,
+    timeout: 30000,
+    maximumAge: 0
+  });
 });
 
 qrFile.addEventListener("change", async () => {
@@ -112,22 +154,21 @@ qrFile.addEventListener("change", async () => {
   }
 
   if (typeof Html5Qrcode === "undefined") {
-    result.textContent = "QR scanning library failed to load. Check your internet connection.";
+    result.textContent = "QR library failed to load. Check your internet connection.";
     return;
   }
 
-  scanStatus.textContent = "Reading QR code...";
+  scanStatus.textContent = "Reading QR image...";
   result.textContent = "Please wait...";
 
-  const scanner = new Html5Qrcode("unused-qr-reader");
-
   try {
+    const scanner = new Html5Qrcode("qr-reader");
     const serial = (await scanner.scanFile(file, false)).trim();
 
-    if (!serial) throw new Error("No QR code content found.");
+    if (!serial) throw new Error("No QR code found in the image.");
 
-    scanStatus.textContent = "QR read successfully: " + serial;
-    result.textContent = "Sending serial and GPS location to verification service...";
+    scanStatus.textContent = "QR detected: " + serial;
+    result.textContent = "Submitting bottle serial and GPS location...";
 
     const response = await fetch(FUNCTION_URL, {
       method: "POST",
@@ -146,9 +187,11 @@ qrFile.addEventListener("change", async () => {
     const data = await response.json();
 
     result.textContent =
+      "BOTTLE VERIFICATION\n\n" +
       JSON.stringify(data, null, 2) +
-      "\n\nGPS coordinates submitted:\n" +
-      "Latitude: " + gps.latitude +
+      "\n\nLOCATION USED FOR VERIFICATION\n" +
+      (placeName.textContent || "Place name unavailable") +
+      "\nLatitude: " + gps.latitude +
       "\nLongitude: " + gps.longitude;
 
   } catch (error) {
@@ -158,6 +201,5 @@ qrFile.addEventListener("change", async () => {
   }
 });
 </script>
-<div id="unused-qr-reader" style="display:none"></div>
 </body>
 </html>
