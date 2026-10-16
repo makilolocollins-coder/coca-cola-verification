@@ -1,0 +1,163 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coca-Cola Bottle Verification</title>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+body{font-family:Arial,sans-serif;max-width:600px;margin:25px auto;padding:16px;color:#222}
+h1{color:#c8102e;font-size:25px}
+button,input{font-size:16px;margin:8px 0;padding:12px;max-width:100%}
+button{background:#c8102e;color:white;border:0;border-radius:6px}
+.panel{background:#f5f5f5;padding:14px;border-radius:8px;margin:12px 0;overflow-wrap:anywhere}
+#result{white-space:pre-wrap;overflow-wrap:anywhere}
+</style>
+</head>
+<body>
+<h1>Coca-Cola Bottle Verification</h1>
+<p>GPS location is required before a bottle can be verified.</p>
+
+<div class="panel">
+<h3>1. Obtain GPS location</h3>
+<button id="gpsButton">Allow GPS Location</button>
+<p id="gpsStatus">Waiting for location permission.</p>
+<p id="coordinates"></p>
+</div>
+
+<div class="panel">
+<h3>2. Upload the bottle QR image</h3>
+<input type="file" id="qrFile" accept="image/*" disabled>
+<p id="scanStatus">Obtain GPS location first.</p>
+</div>
+
+<div class="panel">
+<h3>3. Verification result</h3>
+<pre id="result">No verification performed.</pre>
+</div>
+
+<script>
+const FUNCTION_URL =
+"https://wnjxfwqvxwxnksbyvvug.supabase.co/functions/v1/rapid-service";
+
+const SUPABASE_KEY =
+"sb_publishable_weQHFJ5OcI1YB0Xc04ubsg_F_8AMzoS";
+
+let gps = null;
+
+const gpsButton = document.getElementById("gpsButton");
+const gpsStatus = document.getElementById("gpsStatus");
+const coordinates = document.getElementById("coordinates");
+const qrFile = document.getElementById("qrFile");
+const scanStatus = document.getElementById("scanStatus");
+const result = document.getElementById("result");
+
+gpsButton.addEventListener("click", () => {
+  gps = null;
+  qrFile.disabled = true;
+  result.textContent = "Waiting for GPS location...";
+  gpsStatus.textContent = "Requesting permission...";
+  coordinates.textContent = "";
+
+  if (!window.isSecureContext || !navigator.geolocation) {
+    gpsStatus.textContent =
+      "GPS is unavailable here. Open the published HTTPS GitHub Pages URL in Chrome.";
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    position => {
+      gps = {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude
+      };
+
+      gpsStatus.textContent = "GPS location obtained.";
+      coordinates.textContent =
+        "Latitude: " + gps.latitude.toFixed(6) +
+        "\nLongitude: " + gps.longitude.toFixed(6) +
+        "\nAccuracy: approximately " +
+        Math.round(position.coords.accuracy) + " metres";
+
+      qrFile.disabled = false;
+      scanStatus.textContent = "You can now upload the QR image.";
+      result.textContent = "Ready to verify.";
+    },
+    error => {
+      const messages = {
+        1: "Permission denied. Allow location for this site in Chrome settings.",
+        2: "Location unavailable. Turn on your phone's Location setting and retry.",
+        3: "Location request timed out. Please retry."
+      };
+
+      gps = null;
+      qrFile.disabled = true;
+      gpsStatus.textContent =
+        messages[error.code] || "Could not obtain location.";
+      result.textContent = "Verification blocked: GPS is required.";
+    },
+    { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
+  );
+});
+
+qrFile.addEventListener("change", async () => {
+  const file = qrFile.files[0];
+  if (!file) return;
+
+  if (!gps) {
+    result.textContent = "Verification blocked: GPS is required.";
+    qrFile.value = "";
+    return;
+  }
+
+  if (typeof Html5Qrcode === "undefined") {
+    result.textContent = "QR scanning library failed to load. Check your internet connection.";
+    return;
+  }
+
+  scanStatus.textContent = "Reading QR code...";
+  result.textContent = "Please wait...";
+
+  const scanner = new Html5Qrcode("unused-qr-reader");
+
+  try {
+    const serial = (await scanner.scanFile(file, false)).trim();
+
+    if (!serial) throw new Error("No QR code content found.");
+
+    scanStatus.textContent = "QR read successfully: " + serial;
+    result.textContent = "Sending serial and GPS location to verification service...";
+
+    const response = await fetch(FUNCTION_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": SUPABASE_KEY,
+        "Authorization": "Bearer " + SUPABASE_KEY
+      },
+      body: JSON.stringify({
+        serial_number: serial,
+        latitude: gps.latitude,
+        longitude: gps.longitude
+      })
+    });
+
+    const data = await response.json();
+
+    result.textContent =
+      JSON.stringify(data, null, 2) +
+      "\n\nGPS coordinates submitted:\n" +
+      "Latitude: " + gps.latitude +
+      "\nLongitude: " + gps.longitude;
+
+  } catch (error) {
+    result.textContent = "Verification error: " + error.message;
+  } finally {
+    qrFile.value = "";
+  }
+});
+</script>
+<div id="unused-qr-reader" style="display:none"></div>
+</body>
+</html>
