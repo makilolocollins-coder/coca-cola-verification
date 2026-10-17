@@ -1,0 +1,161 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Coca-Cola Verification Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body{font-family:Arial,sans-serif;background:#f3f5f8;color:#222;margin:0;padding:20px}
+    header{background:#b5121b;color:white;padding:20px;border-radius:12px}
+    h1{font-size:23px;margin:0 0 8px}
+    .panel,.stat{background:white;padding:16px;border-radius:10px;margin-top:16px}
+    .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+    .number{font-size:27px;font-weight:bold;margin-top:10px}
+    input,button{box-sizing:border-box;padding:12px;margin:5px 0;width:100%;border-radius:7px;border:1px solid #ccc}
+    button{background:#b5121b;color:white;border:0;font-weight:bold}
+    .muted{color:#666;font-size:13px}
+    .table-wrap{overflow-x:auto}
+    table{width:100%;border-collapse:collapse;background:white}
+    th,td{text-align:left;padding:10px;border-bottom:1px solid #eee;font-size:13px}
+    #app{display:none}
+    .alert{color:#b5121b;font-weight:bold}
+  </style>
+</head>
+<body>
+<header>
+  <h1>Coca-Cola Bottle Verification</h1>
+  <div>Administrator Dashboard · Simulation Environment</div>
+</header>
+
+<section class="panel" id="login">
+  <h2>Administrator Login</h2>
+  <input id="email" type="email" placeholder="Admin email" autocomplete="username">
+  <input id="password" type="password" placeholder="Password" autocomplete="current-password">
+  <button id="loginBtn">Log in</button>
+  <p id="message" class="muted">Sign in with your Supabase administrator account.</p>
+</section>
+
+<main id="app">
+  <section class="stats">
+    <div class="stat">Total registered bottles<div class="number" id="bottles">—</div></div>
+    <div class="stat">Total scans<div class="number" id="scans">—</div></div>
+    <div class="stat">Registered results<div class="number" id="valid">—</div></div>
+    <div class="stat">Rejected results<div class="number" id="rejected">—</div></div>
+    <div class="stat">Repeat-scan alerts<div class="number" id="repeats">—</div></div>
+  </section>
+
+  <section class="panel">
+    <h2>Recent Bottle Scans</h2>
+    <button id="refreshBtn">Refresh dashboard</button>
+    <p id="status" class="muted"></p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Time</th><th>Serial</th><th>Result</th><th>Location</th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <p class="muted">Repeat scans are indicators for investigation, not proof of counterfeiting.</p>
+    <button id="logoutBtn">Log out</button>
+  </section>
+</main>
+
+<script>
+const SUPABASE_URL = "https://wnjxfwqvxwxnksbyvvug.supabase.co";
+const SUPABASE_KEY = "sb_publishable_weQHFJ5OcI1YB0Xc04ubsg_F_8AMzoS";
+
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const el = id => document.getElementById(id);
+
+async function loadDashboard() {
+  el("status").textContent = "Loading dashboard...";
+  el("rows").innerHTML = "";
+
+  try {
+    const [bottleCount, scanCount, recent] = await Promise.all([
+      db.from("bottle_registry").select("*", {count:"exact",head:true}),
+      db.from("bottle_scans").select("*", {count:"exact",head:true}),
+      db.from("bottle_scans")
+        .select("serial_number,scanned_at,scan_result,scan_place")
+        .order("scanned_at",{ascending:false})
+        .limit(500)
+    ]);
+
+    if (bottleCount.error) throw bottleCount.error;
+    if (scanCount.error) throw scanCount.error;
+    if (recent.error) throw recent.error;
+
+    const records = recent.data || [];
+    const resultText = value => String(value || "").toUpperCase();
+
+    el("bottles").textContent = bottleCount.count ?? 0;
+    el("scans").textContent = scanCount.count ?? 0;
+
+    el("valid").textContent = records.filter(r =>
+      /VALID|VERIFIED|REGISTERED|ACTIVE/.test(resultText(r.scan_result))
+    ).length + (records.length < (scanCount.count || 0) ? "+" : "");
+
+    el("rejected").textContent = records.filter(r =>
+      /INVALID|REJECTED|REVOKED|NOT_FOUND|SUSPICIOUS/.test(resultText(r.scan_result))
+    ).length + (records.length < (scanCount.count || 0) ? "+" : "");
+
+    const counts = {};
+    records.forEach(r => {
+      counts[r.serial_number] = (counts[r.serial_number] || 0) + 1;
+    });
+    el("repeats").textContent = Object.values(counts).filter(n => n >= 3).length;
+
+    records.forEach(r => {
+      const tr = document.createElement("tr");
+      [new Date(r.scanned_at).toLocaleString(), r.serial_number,
+       r.scan_result, r.scan_place || "Location unavailable"].forEach(value => {
+        const td = document.createElement("td");
+        td.textContent = value ?? "";
+        tr.appendChild(td);
+      });
+      el("rows").appendChild(tr);
+    });
+
+    el("status").textContent = "Dashboard updated. Recent results shown: " + records.length;
+  } catch (error) {
+    el("status").textContent =
+      "Could not load data. Check administrator permissions and database access.";
+  }
+}
+
+async function showSession() {
+  const {data} = await db.auth.getSession();
+  const loggedIn = !!data.session;
+  el("login").style.display = loggedIn ? "none" : "block";
+  el("app").style.display = loggedIn ? "block" : "none";
+  if (loggedIn) await loadDashboard();
+}
+
+el("loginBtn").onclick = async () => {
+  el("message").textContent = "Signing in...";
+  const {error} = await db.auth.signInWithPassword({
+    email: el("email").value.trim(),
+    password: el("password").value
+  });
+  if (error) {
+    el("message").textContent = "Login failed. Check your details and account.";
+  } else {
+    el("message").textContent = "";
+    await showSession();
+  }
+};
+
+el("refreshBtn").onclick = loadDashboard;
+el("logoutBtn").onclick = async () => {
+  await db.auth.signOut();
+  await showSession();
+};
+
+showSession();
+</script>
+</body>
+</html>
