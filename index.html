@@ -64,9 +64,7 @@
 
   <section>
     <h2>1. Location</h2>
-    <p id="gpsStatus" class="status">
-      Location is required before scanning.
-    </p>
+    <p id="gpsStatus" class="status">Location is required before scanning.</p>
     <button id="gpsButton">Get my location</button>
   </section>
 
@@ -77,46 +75,33 @@
       placeholder="Enter barcode digits">
 
     <button id="lookupButton">Find product details</button>
-    <button id="startBarcode" class="secondary">
-      Scan barcode with camera
-    </button>
-    <button id="stopBarcode" class="secondary">
-      Stop barcode camera
-    </button>
+    <button id="startBarcode" class="secondary">Scan barcode with camera</button>
+    <button id="stopBarcode" class="secondary">Stop barcode camera</button>
     <div id="barcodeReader"></div>
 
     <label for="barcodeImage">Or upload a barcode image</label>
-    <input id="barcodeImage" type="file"
-      accept="image/*" capture="environment">
-
+    <input id="barcodeImage" type="file" accept="image/*" capture="environment">
     <p id="productStatus" class="status">No product lookup yet.</p>
     <div id="productCard"></div>
   </section>
 
   <section>
     <h2>3. Scan bottle QR code</h2>
-    <p class="muted">
-      Use the live camera. QR image uploads are not supported.
-    </p>
+    <p class="muted">Use the live camera. QR image uploads are not supported.</p>
     <button id="startQR">Start QR camera</button>
     <button id="stopQR" class="secondary">Stop QR camera</button>
     <div id="qrReader"></div>
-
     <label for="qrToken">QR token</label>
-    <input id="qrToken" autocomplete="off"
-      placeholder="Scanned QR token">
+    <input id="qrToken" autocomplete="off" placeholder="Scanned QR token">
     <p id="qrStatus" class="status">QR code not scanned.</p>
   </section>
 
   <section>
     <h2>4. Verify bottle</h2>
     <label for="serial">Printed bottle serial number</label>
-    <input id="serial" autocomplete="off"
-      placeholder="Enter serial number">
+    <input id="serial" autocomplete="off" placeholder="Enter serial number">
     <button id="verifyButton">Verify bottle</button>
-    <p id="verifyStatus" class="status">
-      Waiting for scan details.
-    </p>
+    <p id="verifyStatus" class="status">Waiting for scan details.</p>
   </section>
 </main>
 
@@ -127,9 +112,11 @@
   const SUPABASE_URL =
     "https://wnjxfwqvxwxnksbyvvug.supabase.co";
 
+  // CORRECTED: smart-action is the tested product lookup endpoint.
   const PRODUCT_LOOKUP_URL =
-    SUPABASE_URL + "/functions/v1/product-lookup";
+    SUPABASE_URL + "/functions/v1/smart-action";
 
+  // Kept unchanged for bottle verification.
   const VERIFY_URL =
     SUPABASE_URL + "/functions/v1/rapid-service";
 
@@ -183,11 +170,7 @@ Longitude: ${position.longitude}`
             3: "Location request timed out. Try again."
           };
 
-          show(
-            "gpsStatus",
-            messages[err.code] || "Could not get your location."
-          );
-
+          show("gpsStatus", messages[err.code] || "Could not get your location.");
           resolve(false);
         },
         {
@@ -206,7 +189,6 @@ Longitude: ${position.longitude}`
 
   async function lookupProduct() {
     if (lookupBusy) return;
-
     if (!await ensureLocation()) return;
 
     const barcode = $("barcode").value.trim().replace(/\s/g, "");
@@ -219,7 +201,6 @@ Longitude: ${position.longitude}`
     lookupBusy = true;
     $("lookupButton").disabled = true;
     $("productCard").replaceChildren();
-
     show("productStatus", "Looking up product in Open Food Facts...");
 
     try {
@@ -239,15 +220,13 @@ Longitude: ${position.longitude}`
         data = JSON.parse(raw);
       } catch {
         throw new Error(
-          `Server returned non-JSON data (HTTP ${response.status}): ` +
-          raw.slice(0, 400)
+          `Server returned non-JSON data (HTTP ${response.status}): ${raw.slice(0, 400)}`
         );
       }
 
       if (!response.ok) {
         throw new Error(
-          `HTTP ${response.status}: ` +
-          (data.error || data.message || raw.slice(0, 400))
+          `HTTP ${response.status}: ${data.error || data.message || raw.slice(0, 400)}`
         );
       }
 
@@ -263,7 +242,6 @@ Longitude: ${position.longitude}`
       show("productStatus", "Product information found.");
 
       const card = $("productCard");
-
       const title = document.createElement("h3");
       title.textContent = data.name || "Unknown product";
       card.appendChild(title);
@@ -291,14 +269,9 @@ A catalogue match is not proof of authenticity.`;
       card.appendChild(details);
 
     } catch (err) {
-      // CORRECTION: show the real error instead of a generic message.
-      show(
-        "productStatus",
-        `Product lookup error:\n${err.message || String(err)}`
-      );
-
+      // Show the real error so we can diagnose any remaining problem.
+      show("productStatus", `Product lookup error:\n${err.message || String(err)}`);
       console.error("Product lookup error:", err);
-
     } finally {
       lookupBusy = false;
       $("lookupButton").disabled = false;
@@ -306,24 +279,18 @@ A catalogue match is not proof of authenticity.`;
   }
 
   async function stopScanner(which) {
-    const scanner =
-      which === "barcode" ? barcodeScanner : qrScanner;
+    const scanner = which === "barcode" ? barcodeScanner : qrScanner;
 
     if (scanner) {
       try {
-        if (scanner.isScanning) {
-          await scanner.stop();
-        }
+        if (scanner.isScanning) await scanner.stop();
         await scanner.clear();
       } catch (err) {
         console.warn("Scanner cleanup:", err);
       }
 
-      if (which === "barcode") {
-        barcodeScanner = null;
-      } else {
-        qrScanner = null;
-      }
+      if (which === "barcode") barcodeScanner = null;
+      else qrScanner = null;
     }
   }
 
@@ -344,18 +311,11 @@ A catalogue match is not proof of authenticity.`;
     await stopScanner(which);
 
     const scanner = new Html5Qrcode(readerId);
-
-    if (isQR) {
-      qrScanner = scanner;
-    } else {
-      barcodeScanner = scanner;
-    }
+    if (isQR) qrScanner = scanner;
+    else barcodeScanner = scanner;
 
     const config = isQR
-      ? {
-          fps: 10,
-          qrbox: { width: 240, height: 240 }
-        }
+      ? { fps: 10, qrbox: { width: 240, height: 240 } }
       : {
           fps: 10,
           qrbox: { width: 280, height: 140 },
@@ -376,10 +336,7 @@ A catalogue match is not proof of authenticity.`;
         async decodedText => {
           if (isQR) {
             $("qrToken").value = decodedText.trim();
-            show(
-              "qrStatus",
-              "QR captured. Confirm it contains the expected bottle token."
-            );
+            show("qrStatus", "QR captured. Confirm it contains the expected bottle token.");
             await stopScanner("qr");
           } else {
             $("barcode").value = decodedText.trim().replace(/\s/g, "");
@@ -391,7 +348,6 @@ A catalogue match is not proof of authenticity.`;
       );
     } catch (err) {
       await stopScanner(which);
-
       show(
         isQR ? "qrStatus" : "productStatus",
         `Could not start camera: ${err.message || String(err)}`
@@ -409,7 +365,6 @@ A catalogue match is not proof of authenticity.`;
     }
 
     show("productStatus", "Reading barcode image...");
-
     const scanner = new Html5Qrcode("barcodeReader");
 
     try {
@@ -419,7 +374,6 @@ A catalogue match is not proof of authenticity.`;
       await lookupProduct();
     } catch (err) {
       try { await scanner.clear(); } catch (_) {}
-
       show(
         "productStatus",
         "Could not read a barcode from that image. Try a clearer image or use the camera scanner."
@@ -445,7 +399,6 @@ A catalogue match is not proof of authenticity.`;
 
     verifyBusy = true;
     $("verifyButton").disabled = true;
-
     show("verifyStatus", "Submitting bottle details for verification...");
 
     try {
@@ -472,28 +425,21 @@ A catalogue match is not proof of authenticity.`;
         data = JSON.parse(raw);
       } catch {
         throw new Error(
-          `Server returned non-JSON data (HTTP ${response.status}): ` +
-          raw.slice(0, 400)
+          `Server returned non-JSON data (HTTP ${response.status}): ${raw.slice(0, 400)}`
         );
       }
 
       if (!response.ok) {
         throw new Error(
-          `HTTP ${response.status}: ` +
-          (data.error || data.message || raw.slice(0, 400))
+          `HTTP ${response.status}: ${data.error || data.message || raw.slice(0, 400)}`
         );
       }
 
       show("verifyStatus", JSON.stringify(data, null, 2));
 
     } catch (err) {
-      show(
-        "verifyStatus",
-        `Verification error:\n${err.message || String(err)}`
-      );
-
+      show("verifyStatus", `Verification error:\n${err.message || String(err)}`);
       console.error("Bottle verification error:", err);
-
     } finally {
       verifyBusy = false;
       $("verifyButton").disabled = false;
@@ -502,20 +448,10 @@ A catalogue match is not proof of authenticity.`;
 
   $("gpsButton").addEventListener("click", getLocation);
   $("lookupButton").addEventListener("click", lookupProduct);
-
-  $("startBarcode").addEventListener(
-    "click", () => startScanner("barcode")
-  );
-  $("stopBarcode").addEventListener(
-    "click", () => stopScanner("barcode")
-  );
-
-  $("startQR").addEventListener(
-    "click", () => startScanner("qr")
-  );
-  $("stopQR").addEventListener(
-    "click", () => stopScanner("qr")
-  );
+  $("startBarcode").addEventListener("click", () => startScanner("barcode"));
+  $("stopBarcode").addEventListener("click", () => stopScanner("barcode"));
+  $("startQR").addEventListener("click", () => startScanner("qr"));
+  $("stopQR").addEventListener("click", () => stopScanner("qr"));
 
   $("barcodeImage").addEventListener(
     "change",
