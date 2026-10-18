@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -9,42 +8,65 @@
   <style>
     * { box-sizing: border-box; }
     body {
-      font-family: Arial, sans-serif; margin: 0; padding: 18px;
-      background: #f3f5f7; color: #17202a;
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 18px;
+      background: #f3f5f7;
+      color: #17202a;
     }
     main { max-width: 600px; margin: auto; }
     h1 { color: #b5121b; }
     section {
-      background: white; padding: 16px; margin: 14px 0;
-      border-radius: 12px; box-shadow: 0 2px 8px #0000000d;
+      background: white;
+      padding: 16px;
+      margin: 14px 0;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px #0000000d;
     }
-    label { display: block; font-weight: bold; margin: 12px 0 6px; }
+    label {
+      display: block;
+      font-weight: bold;
+      margin: 12px 0 6px;
+    }
     input, button {
-      width: 100%; padding: 12px; margin: 5px 0;
-      border-radius: 8px; font-size: 16px;
+      width: 100%;
+      padding: 12px;
+      margin: 5px 0;
+      border-radius: 8px;
+      font-size: 16px;
     }
     input { border: 1px solid #bbc3cc; }
     button {
-      border: 0; background: #b5121b; color: white;
-      font-weight: bold; cursor: pointer;
+      border: 0;
+      background: #b5121b;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
     }
     button.secondary { background: #273746; }
     button:disabled { opacity: .55; }
     .status { white-space: pre-wrap; overflow-wrap: anywhere; }
     .muted { color: #566573; font-size: 14px; }
-    img.product { max-width: 180px; max-height: 200px; object-fit: contain; }
+    img.product {
+      max-width: 180px;
+      max-height: 200px;
+      object-fit: contain;
+    }
     #barcodeReader, #qrReader { margin-top: 10px; }
-    .hidden { display: none; }
   </style>
 </head>
 <body>
 <main>
   <h1>Product Verification</h1>
-  <p class="muted">Check product information and submit a bottle verification scan.</p>
+  <p class="muted">
+    Check product information and submit a bottle verification scan.
+  </p>
 
   <section>
     <h2>1. Location</h2>
-    <p id="gpsStatus" class="status">Location is required before scanning.</p>
+    <p id="gpsStatus" class="status">
+      Location is required before scanning.
+    </p>
     <button id="gpsButton">Get my location</button>
   </section>
 
@@ -55,33 +77,46 @@
       placeholder="Enter barcode digits">
 
     <button id="lookupButton">Find product details</button>
-    <button id="startBarcode" class="secondary">Scan barcode with camera</button>
-    <button id="stopBarcode" class="secondary">Stop barcode camera</button>
+    <button id="startBarcode" class="secondary">
+      Scan barcode with camera
+    </button>
+    <button id="stopBarcode" class="secondary">
+      Stop barcode camera
+    </button>
     <div id="barcodeReader"></div>
 
     <label for="barcodeImage">Or upload a barcode image</label>
-    <input id="barcodeImage" type="file" accept="image/*" capture="environment">
+    <input id="barcodeImage" type="file"
+      accept="image/*" capture="environment">
+
     <p id="productStatus" class="status">No product lookup yet.</p>
     <div id="productCard"></div>
   </section>
 
   <section>
     <h2>3. Scan bottle QR code</h2>
-    <p class="muted">Use the live camera. QR image uploads are not supported.</p>
+    <p class="muted">
+      Use the live camera. QR image uploads are not supported.
+    </p>
     <button id="startQR">Start QR camera</button>
     <button id="stopQR" class="secondary">Stop QR camera</button>
     <div id="qrReader"></div>
+
     <label for="qrToken">QR token</label>
-    <input id="qrToken" autocomplete="off" placeholder="Scanned QR token">
+    <input id="qrToken" autocomplete="off"
+      placeholder="Scanned QR token">
     <p id="qrStatus" class="status">QR code not scanned.</p>
   </section>
 
   <section>
     <h2>4. Verify bottle</h2>
     <label for="serial">Printed bottle serial number</label>
-    <input id="serial" autocomplete="off" placeholder="Enter serial number">
+    <input id="serial" autocomplete="off"
+      placeholder="Enter serial number">
     <button id="verifyButton">Verify bottle</button>
-    <p id="verifyStatus" class="status">Waiting for scan details.</p>
+    <p id="verifyStatus" class="status">
+      Waiting for scan details.
+    </p>
   </section>
 </main>
 
@@ -89,23 +124,30 @@
 (() => {
   "use strict";
 
-  const SUPABASE_URL = "https://wnjxfwqvxwxnksbyvvug.supabase.co";
-  const PRODUCT_LOOKUP_URL = SUPABASE_URL + "/functions/v1/product-lookup";
-  const VERIFY_URL = SUPABASE_URL + "/functions/v1/rapid-service";
+  const SUPABASE_URL =
+    "https://wnjxfwqvxwxnksbyvvug.supabase.co";
 
-  // A Supabase publishable key is intended for client-side use.
-  // Never put a service-role key in this file.
-  const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_weQHFJ5OcI1YB0Xc04ubsg_F_8AMzoS";
+  const PRODUCT_LOOKUP_URL =
+    SUPABASE_URL + "/functions/v1/product-lookup";
+
+  const VERIFY_URL =
+    SUPABASE_URL + "/functions/v1/rapid-service";
+
+  // Public publishable key only. Never use a service-role key here.
+  const SUPABASE_PUBLISHABLE_KEY =
+    "sb_publishable_weQHFJ5OcI1YB0Xc04ubsg_F_8AMzoS";
 
   let position = null;
   let barcodeScanner = null;
   let qrScanner = null;
-  let lastProduct = null;
   let lookupBusy = false;
   let verifyBusy = false;
 
   const $ = id => document.getElementById(id);
-  const show = (id, message) => { $(id).textContent = message; };
+
+  function show(id, message) {
+    $(id).textContent = message;
+  }
 
   async function getLocation() {
     if (!navigator.geolocation) {
@@ -122,21 +164,37 @@
             latitude: p.coords.latitude,
             longitude: p.coords.longitude
           };
-          show("gpsStatus",
-            `Location captured.\nLatitude: ${position.latitude}\nLongitude: ${position.longitude}`);
+
+          show(
+            "gpsStatus",
+            `Location captured.
+Latitude: ${position.latitude}
+Longitude: ${position.longitude}`
+          );
+
           resolve(true);
         },
         err => {
           position = null;
+
           const messages = {
-            1: "Location permission denied. Allow location access in your browser settings.",
-            2: "Your location could not be determined. Check GPS and try again.",
+            1: "Location permission denied. Allow location access in browser settings.",
+            2: "Location could not be determined. Check GPS and try again.",
             3: "Location request timed out. Try again."
           };
-          show("gpsStatus", messages[err.code] || "Could not get your location.");
+
+          show(
+            "gpsStatus",
+            messages[err.code] || "Could not get your location."
+          );
+
           resolve(false);
         },
-        { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+        {
+          enableHighAccuracy: true,
+          timeout: 20000,
+          maximumAge: 0
+        }
       );
     });
   }
@@ -148,9 +206,11 @@
 
   async function lookupProduct() {
     if (lookupBusy) return;
+
     if (!await ensureLocation()) return;
 
     const barcode = $("barcode").value.trim().replace(/\s/g, "");
+
     if (!/^\d{8,14}$/.test(barcode)) {
       show("productStatus", "Enter a barcode containing 8–14 digits.");
       return;
@@ -159,7 +219,7 @@
     lookupBusy = true;
     $("lookupButton").disabled = true;
     $("productCard").replaceChildren();
-    lastProduct = null;
+
     show("productStatus", "Looking up product in Open Food Facts...");
 
     try {
@@ -174,22 +234,36 @@
 
       const raw = await response.text();
       let data;
-      try { data = JSON.parse(raw); }
-      catch { throw new Error(`Lookup returned non-JSON data (HTTP ${response.status}).`); }
+
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        throw new Error(
+          `Server returned non-JSON data (HTTP ${response.status}): ` +
+          raw.slice(0, 400)
+        );
+      }
 
       if (!response.ok) {
-        throw new Error(data.error || `Lookup failed with HTTP ${response.status}.`);
+        throw new Error(
+          `HTTP ${response.status}: ` +
+          (data.error || data.message || raw.slice(0, 400))
+        );
       }
 
       if (!data.found) {
-        show("productStatus", data.message || "Product not found in the catalogue.");
+        show(
+          "productStatus",
+          data.message ||
+          "This barcode was not found in Open Food Facts. This alone does not prove the product is counterfeit."
+        );
         return;
       }
 
-      lastProduct = data;
       show("productStatus", "Product information found.");
 
       const card = $("productCard");
+
       const title = document.createElement("h3");
       title.textContent = data.name || "Unknown product";
       card.appendChild(title);
@@ -206,17 +280,25 @@
       const details = document.createElement("p");
       details.className = "status";
       details.textContent =
-        `Barcode: ${data.barcode}\n` +
-        `Brand: ${data.brands}\n` +
-        `Quantity: ${data.quantity}\n` +
-        `Packaging: ${data.packaging}\n` +
-        `Source: ${data.source}\n\n` +
-        "Catalogue match is not proof of authenticity.";
+        `Barcode: ${data.barcode || barcode}
+Brand: ${data.brands || "Not provided"}
+Quantity: ${data.quantity || "Not provided"}
+Packaging: ${data.packaging || "Not provided"}
+Source: ${data.source || "Open Food Facts"}
+
+A catalogue match is not proof of authenticity.`;
+
       card.appendChild(details);
+
     } catch (err) {
-      show("productStatus",
-        `${err.message || "Product lookup failed."}\n\n` +
-        "Check your internet connection and confirm the product-lookup function is deployed.");
+      // CORRECTION: show the real error instead of a generic message.
+      show(
+        "productStatus",
+        `Product lookup error:\n${err.message || String(err)}`
+      );
+
+      console.error("Product lookup error:", err);
+
     } finally {
       lookupBusy = false;
       $("lookupButton").disabled = false;
@@ -224,31 +306,59 @@
   }
 
   async function stopScanner(which) {
-    const scanner = which === "barcode" ? barcodeScanner : qrScanner;
+    const scanner =
+      which === "barcode" ? barcodeScanner : qrScanner;
+
     if (scanner) {
       try {
-        if (scanner.isScanning) await scanner.stop();
+        if (scanner.isScanning) {
+          await scanner.stop();
+        }
         await scanner.clear();
-      } catch (_) {}
-      if (which === "barcode") barcodeScanner = null;
-      else qrScanner = null;
+      } catch (err) {
+        console.warn("Scanner cleanup:", err);
+      }
+
+      if (which === "barcode") {
+        barcodeScanner = null;
+      } else {
+        qrScanner = null;
+      }
     }
   }
 
   async function startScanner(which) {
     if (!await ensureLocation()) return;
 
+    if (typeof Html5Qrcode === "undefined") {
+      show(
+        which === "qr" ? "qrStatus" : "productStatus",
+        "Camera library failed to load. Check your internet connection and reload."
+      );
+      return;
+    }
+
     const isQR = which === "qr";
     const readerId = isQR ? "qrReader" : "barcodeReader";
 
     await stopScanner(which);
+
     const scanner = new Html5Qrcode(readerId);
-    if (isQR) qrScanner = scanner;
-    else barcodeScanner = scanner;
+
+    if (isQR) {
+      qrScanner = scanner;
+    } else {
+      barcodeScanner = scanner;
+    }
 
     const config = isQR
-      ? { fps: 10, qrbox: { width: 240, height: 240 } }
-      : { fps: 10, qrbox: { width: 280, height: 140 },
+      ? {
+          fps: 10,
+          qrbox: { width: 240, height: 240 }
+        }
+      : {
+          fps: 10,
+          qrbox: { width: 280, height: 140 },
           formatsToSupport: [
             Html5QrcodeSupportedFormats.EAN_13,
             Html5QrcodeSupportedFormats.EAN_8,
@@ -256,7 +366,8 @@
             Html5QrcodeSupportedFormats.UPC_E,
             Html5QrcodeSupportedFormats.CODE_128,
             Html5QrcodeSupportedFormats.CODE_39
-          ] };
+          ]
+        };
 
     try {
       await scanner.start(
@@ -265,11 +376,13 @@
         async decodedText => {
           if (isQR) {
             $("qrToken").value = decodedText.trim();
-            show("qrStatus", "QR captured. Confirm it contains the expected bottle token.");
+            show(
+              "qrStatus",
+              "QR captured. Confirm it contains the expected bottle token."
+            );
             await stopScanner("qr");
           } else {
-            $("barcode").value = decodedText.replace(/\s/g, "");
-            show("productStatus", "Barcode scanned. Looking up product...");
+            $("barcode").value = decodedText.trim().replace(/\s/g, "");
             await stopScanner("barcode");
             await lookupProduct();
           }
@@ -278,8 +391,11 @@
       );
     } catch (err) {
       await stopScanner(which);
-      show(isQR ? "qrStatus" : "productStatus",
-        `Could not start camera: ${err.message || err}. Allow camera permission and use HTTPS.`);
+
+      show(
+        isQR ? "qrStatus" : "productStatus",
+        `Could not start camera: ${err.message || String(err)}`
+      );
     }
   }
 
@@ -287,16 +403,27 @@
     if (!file) return;
     if (!await ensureLocation()) return;
 
+    if (typeof Html5Qrcode === "undefined") {
+      show("productStatus", "Barcode scanning library failed to load.");
+      return;
+    }
+
     show("productStatus", "Reading barcode image...");
+
+    const scanner = new Html5Qrcode("barcodeReader");
+
     try {
-      const scanner = new Html5Qrcode("barcodeReader");
       const result = await scanner.scanFile(file, true);
-      $("barcode").value = result.trim();
+      $("barcode").value = result.trim().replace(/\s/g, "");
       await scanner.clear();
       await lookupProduct();
     } catch (err) {
-      show("productStatus",
-        "Could not read a barcode from that image. Try a clear, straight-on photo or use the camera scanner.");
+      try { await scanner.clear(); } catch (_) {}
+
+      show(
+        "productStatus",
+        "Could not read a barcode from that image. Try a clearer image or use the camera scanner."
+      );
     }
   }
 
@@ -309,12 +436,16 @@
     const barcode = $("barcode").value.trim();
 
     if (!serial_number || !qr_token || !barcode) {
-      show("verifyStatus", "Enter the printed serial number, scan the QR code, and provide the barcode.");
+      show(
+        "verifyStatus",
+        "Enter the printed serial number, scan the QR code, and provide the barcode."
+      );
       return;
     }
 
     verifyBusy = true;
     $("verifyButton").disabled = true;
+
     show("verifyStatus", "Submitting bottle details for verification...");
 
     try {
@@ -336,18 +467,33 @@
 
       const raw = await response.text();
       let data;
-      try { data = JSON.parse(raw); }
-      catch { throw new Error(`Verification returned non-JSON data (HTTP ${response.status}).`); }
+
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        throw new Error(
+          `Server returned non-JSON data (HTTP ${response.status}): ` +
+          raw.slice(0, 400)
+        );
+      }
 
       if (!response.ok) {
-        throw new Error(data.error || data.message || `Verification failed with HTTP ${response.status}.`);
+        throw new Error(
+          `HTTP ${response.status}: ` +
+          (data.error || data.message || raw.slice(0, 400))
+        );
       }
 
       show("verifyStatus", JSON.stringify(data, null, 2));
+
     } catch (err) {
-      show("verifyStatus",
-        `${err.message || "Verification request failed."}\n\n` +
-        "Check that rapid-service is deployed at the configured endpoint and accepts this request format.");
+      show(
+        "verifyStatus",
+        `Verification error:\n${err.message || String(err)}`
+      );
+
+      console.error("Bottle verification error:", err);
+
     } finally {
       verifyBusy = false;
       $("verifyButton").disabled = false;
@@ -356,14 +502,28 @@
 
   $("gpsButton").addEventListener("click", getLocation);
   $("lookupButton").addEventListener("click", lookupProduct);
-  $("startBarcode").addEventListener("click", () => startScanner("barcode"));
-  $("stopBarcode").addEventListener("click", () => stopScanner("barcode"));
-  $("startQR").addEventListener("click", () => startScanner("qr"));
-  $("stopQR").addEventListener("click", () => stopScanner("qr"));
-  $("barcodeImage").addEventListener("change", e => scanBarcodeImage(e.target.files[0]));
+
+  $("startBarcode").addEventListener(
+    "click", () => startScanner("barcode")
+  );
+  $("stopBarcode").addEventListener(
+    "click", () => stopScanner("barcode")
+  );
+
+  $("startQR").addEventListener(
+    "click", () => startScanner("qr")
+  );
+  $("stopQR").addEventListener(
+    "click", () => stopScanner("qr")
+  );
+
+  $("barcodeImage").addEventListener(
+    "change",
+    event => scanBarcodeImage(event.target.files[0])
+  );
+
   $("verifyButton").addEventListener("click", verifyBottle);
 
-  // Request location immediately; the user can retry with the button.
   getLocation();
 })();
 </script>
