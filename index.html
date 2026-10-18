@@ -2,646 +2,370 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Product Authentication System</title>
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-
-<style>
-*{box-sizing:border-box}
-body{font-family:Arial,sans-serif;max-width:650px;margin:auto;padding:16px;color:#222;background:#fff}
-h1{color:#c8102e;font-size:26px}
-h2{font-size:19px;margin-top:0}
-.panel{background:#f6f6f6;padding:16px;border-radius:12px;margin:15px 0;overflow-wrap:anywhere}
-button,input{font:inherit;padding:12px;margin:7px 0;max-width:100%}
-button{background:#c8102e;color:white;border:0;border-radius:7px;cursor:pointer}
-button:disabled{background:#999;cursor:not-allowed}
-input[type=text],input[type=file]{width:100%;display:block}
-.status{font-size:14px;color:#555}
-#placeName{font-weight:bold;color:#176b36}
-#barcode-reader,#qr-reader{width:100%;max-width:450px;margin-top:10px}
-.hidden{display:none!important}
-pre{white-space:pre-wrap;overflow-wrap:anywhere}
-.product-card{background:white;border:1px solid #ddd;border-radius:12px;padding:14px;margin-top:14px}
-.product-card img{width:100%;max-height:280px;object-fit:contain;border-radius:8px;background:#fff}
-.product-title{font-size:21px;font-weight:bold;margin:10px 0;color:#222}
-.product-brand{font-size:16px;color:#555;margin-bottom:10px}
-.product-details{font-size:14px;line-height:1.8}
-.product-details strong{color:#333}
-.catalogue-note{font-size:12px;color:#666;margin-top:12px}
-#productCard{display:none}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Product Verification</title>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: Arial, sans-serif; margin: 0; padding: 18px;
+      background: #f3f5f7; color: #17202a;
+    }
+    main { max-width: 600px; margin: auto; }
+    h1 { color: #b5121b; }
+    section {
+      background: white; padding: 16px; margin: 14px 0;
+      border-radius: 12px; box-shadow: 0 2px 8px #0000000d;
+    }
+    label { display: block; font-weight: bold; margin: 12px 0 6px; }
+    input, button {
+      width: 100%; padding: 12px; margin: 5px 0;
+      border-radius: 8px; font-size: 16px;
+    }
+    input { border: 1px solid #bbc3cc; }
+    button {
+      border: 0; background: #b5121b; color: white;
+      font-weight: bold; cursor: pointer;
+    }
+    button.secondary { background: #273746; }
+    button:disabled { opacity: .55; }
+    .status { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .muted { color: #566573; font-size: 14px; }
+    img.product { max-width: 180px; max-height: 200px; object-fit: contain; }
+    #barcodeReader, #qrReader { margin-top: 10px; }
+    .hidden { display: none; }
+  </style>
 </head>
-
 <body>
-<h1>Product Verification</h1>
-<p>Detect your location, identify the product, scan its QR code and enter the bottle's serial number.</p>
+<main>
+  <h1>Product Verification</h1>
+  <p class="muted">Check product information and submit a bottle verification scan.</p>
 
-<div class="panel">
-<h2>1. Detect your location</h2>
-<button id="gpsButton">Detect GPS Location</button>
-<p id="gpsStatus" class="status">Waiting for location permission.</p>
-<p id="placeName"></p>
-<p id="coordinates" class="status"></p>
-</div>
+  <section>
+    <h2>1. Location</h2>
+    <p id="gpsStatus" class="status">Location is required before scanning.</p>
+    <button id="gpsButton">Get my location</button>
+  </section>
 
-<div class="panel">
-<h2>2. Identify the product</h2>
-<p class="status">Scan the barcode with your camera or upload a barcode image.</p>
+  <section>
+    <h2>2. Look up a barcode</h2>
+    <label for="barcode">Product barcode</label>
+    <input id="barcode" inputmode="numeric" autocomplete="off"
+      placeholder="Enter barcode digits">
 
-<button id="barcodeCameraButton" disabled>Scan Barcode with Camera</button>
-<div id="barcode-reader" class="hidden"></div>
-<button id="stopBarcodeButton" class="hidden">Stop Barcode Camera</button>
+    <button id="lookupButton">Find product details</button>
+    <button id="startBarcode" class="secondary">Scan barcode with camera</button>
+    <button id="stopBarcode" class="secondary">Stop barcode camera</button>
+    <div id="barcodeReader"></div>
 
-<label for="barcodeFile">Or upload a barcode image</label>
-<input type="file" id="barcodeFile" accept="image/*" disabled>
+    <label for="barcodeImage">Or upload a barcode image</label>
+    <input id="barcodeImage" type="file" accept="image/*" capture="environment">
+    <p id="productStatus" class="status">No product lookup yet.</p>
+    <div id="productCard"></div>
+  </section>
 
-<label for="barcodeInput">Barcode number</label>
-<input type="text" id="barcodeInput" inputmode="numeric"
-placeholder="Enter barcode number" disabled>
+  <section>
+    <h2>3. Scan bottle QR code</h2>
+    <p class="muted">Use the live camera. QR image uploads are not supported.</p>
+    <button id="startQR">Start QR camera</button>
+    <button id="stopQR" class="secondary">Stop QR camera</button>
+    <div id="qrReader"></div>
+    <label for="qrToken">QR token</label>
+    <input id="qrToken" autocomplete="off" placeholder="Scanned QR token">
+    <p id="qrStatus" class="status">QR code not scanned.</p>
+  </section>
 
-<button id="lookupButton" disabled>Find Product Details</button>
-<p id="barcodeStatus" class="status">Detect GPS first.</p>
-
-<div id="productCard" class="product-card">
-<img id="productImage" alt="Product picture from Open Food Facts">
-<div id="imageUnavailable" class="status hidden">
-No product picture is available in the catalogue.
-</div>
-<div id="productName" class="product-title"></div>
-<div id="productBrand" class="product-brand"></div>
-<div id="productDetails" class="product-details"></div>
-<p class="catalogue-note">
-Product information and image supplied by Open Food Facts.
-A catalogue match does not prove that this individual product is genuine.
-</p>
-</div>
-</div>
-
-<div class="panel">
-<h2>3. Scan the bottle QR code</h2>
-<p class="status">QR codes must be scanned using the live camera. QR image uploads are not supported.</p>
-<button id="qrCameraButton" disabled>Scan QR Code with Camera</button>
-<div id="qr-reader" class="hidden"></div>
-<button id="stopQrButton" class="hidden">Stop QR Camera</button>
-<p id="qrStatus" class="status">Detect GPS first.</p>
-</div>
-
-<div class="panel">
-<h2>4. Enter the bottle serial number</h2>
-<label for="serialInput">Printed serial number</label>
-<input type="text" id="serialInput"
-placeholder="Enter serial number on the bottle" disabled>
-<button id="verifyButton" disabled>Verify Bottle</button>
-<p class="status">Verification requires GPS, a product barcode, a scanned QR token and a serial number.</p>
-</div>
-
-<div class="panel">
-<h2>5. Verification result</h2>
-<pre id="result">No verification performed.</pre>
-</div>
+  <section>
+    <h2>4. Verify bottle</h2>
+    <label for="serial">Printed bottle serial number</label>
+    <input id="serial" autocomplete="off" placeholder="Enter serial number">
+    <button id="verifyButton">Verify bottle</button>
+    <p id="verifyStatus" class="status">Waiting for scan details.</p>
+  </section>
+</main>
 
 <script>
-"use strict";
+(() => {
+  "use strict";
 
-const FUNCTION_URL =
-"https://wnjxfwqvxwxnksbyvvug.supabase.co/functions/v1/rapid-service";
+  const SUPABASE_URL = "https://wnjxfwqvxwxnksbyvvug.supabase.co";
+  const PRODUCT_LOOKUP_URL = SUPABASE_URL + "/functions/v1/product-lookup";
+  const VERIFY_URL = SUPABASE_URL + "/functions/v1/rapid-service";
 
-const SUPABASE_KEY =
-"sb_publishable_weQHFJ5OcI1YB0Xc04ubsg_F_8AMzoS";
+  // A Supabase publishable key is intended for client-side use.
+  // Never put a service-role key in this file.
+  const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_weQHFJ5OcI1YB0Xc04ubsg_F_8AMzoS";
 
-// Open Food Facts v2 product API
-const OFF_URL = "https://world.openfoodfacts.org/api/v2/product/";
+  let position = null;
+  let barcodeScanner = null;
+  let qrScanner = null;
+  let lastProduct = null;
+  let lookupBusy = false;
+  let verifyBusy = false;
 
-let gps = null;
-let product = null;
-let qrToken = "";
-let barcodeScanner = null;
-let qrScanner = null;
-let busy = false;
+  const $ = id => document.getElementById(id);
+  const show = (id, message) => { $(id).textContent = message; };
 
-const $ = id => document.getElementById(id);
-
-function setResult(message) {
-  $("result").textContent = message;
-}
-
-function normalizeBarcode(value) {
-  return String(value || "").replace(/\s/g, "").trim();
-}
-
-function updateVerifyButton() {
-  $("verifyButton").disabled =
-    !gps ||
-    !product ||
-    !product.found ||
-    !qrToken ||
-    !$("serialInput").value.trim() ||
-    busy;
-}
-
-function enableControls(enabled) {
-  $("barcodeCameraButton").disabled = !enabled;
-  $("barcodeFile").disabled = !enabled;
-  $("barcodeInput").disabled = !enabled;
-  $("lookupButton").disabled = !enabled;
-  $("qrCameraButton").disabled = !enabled;
-  $("serialInput").disabled = !enabled;
-  updateVerifyButton();
-}
-
-function clearProduct() {
-  product = null;
-  $("productCard").style.display = "none";
-  $("productImage").removeAttribute("src");
-  $("imageUnavailable").classList.add("hidden");
-  updateVerifyButton();
-}
-
-/* GPS */
-
-$("gpsButton").addEventListener("click", () => {
-  gps = null;
-  qrToken = "";
-  clearProduct();
-  enableControls(false);
-
-  $("barcodeInput").value = "";
-  $("serialInput").value = "";
-  $("placeName").textContent = "";
-  $("coordinates").textContent = "";
-  $("gpsStatus").textContent = "Requesting your location...";
-  $("barcodeStatus").textContent = "Detect GPS first.";
-  $("qrStatus").textContent = "Detect GPS first.";
-  setResult("Waiting for GPS location.");
-
-  if (!window.isSecureContext || !navigator.geolocation) {
-    $("gpsStatus").textContent =
-      "GPS unavailable. Open the published HTTPS page in Chrome.";
-    return;
-  }
-
-  navigator.geolocation.getCurrentPosition(async position => {
-    gps = {
-      latitude: position.coords.latitude,
-      longitude: position.coords.longitude,
-      accuracy: position.coords.accuracy
-    };
-
-    $("coordinates").textContent =
-      "Latitude: " + gps.latitude.toFixed(6) +
-      "\nLongitude: " + gps.longitude.toFixed(6) +
-      "\nAccuracy: approximately " +
-      Math.round(gps.accuracy) + " metres";
-
-    $("gpsStatus").textContent = "GPS coordinates detected.";
-    $("placeName").textContent = "Looking up place name...";
-
-    try {
-      const url =
-        "https://nominatim.openstreetmap.org/reverse" +
-        "?format=jsonv2&lat=" + gps.latitude +
-        "&lon=" + gps.longitude + "&zoom=18";
-
-      const response = await fetch(url);
-      if (!response.ok) throw new Error("Address lookup failed");
-
-      const data = await response.json();
-      $("placeName").textContent = data.display_name
-        ? "Detected place: " + data.display_name
-        : "GPS detected; place name unavailable.";
-    } catch (_) {
-      $("placeName").textContent =
-        "GPS detected. Place name lookup unavailable.";
+  async function getLocation() {
+    if (!navigator.geolocation) {
+      show("gpsStatus", "This browser does not support location.");
+      return false;
     }
 
-    enableControls(true);
-    $("barcodeStatus").textContent =
-      "Scan or enter the product barcode.";
-    $("qrStatus").textContent =
-      "Ready to scan the bottle QR code.";
-    setResult("GPS obtained. Continue with product identification.");
+    show("gpsStatus", "Requesting location permission...");
 
-  }, error => {
-    gps = null;
-    enableControls(false);
-
-    const messages = {
-      1: "Location permission denied. Allow location access in Chrome.",
-      2: "Location unavailable. Turn on your phone's location setting.",
-      3: "Location request timed out. Try again."
-    };
-
-    $("gpsStatus").textContent =
-      messages[error.code] || "Could not detect location.";
-    setResult("Verification blocked: GPS is required.");
-  }, {
-    enableHighAccuracy: true,
-    timeout: 30000,
-    maximumAge: 0
-  });
-});
-
-/* Open Food Facts lookup */
-
-async function lookupProduct() {
-  if (!gps) {
-    $("barcodeStatus").textContent = "Detect GPS first.";
-    return;
-  }
-
-  const barcode = normalizeBarcode($("barcodeInput").value);
-
-  if (!/^\d{8,14}$/.test(barcode)) {
-    clearProduct();
-    $("barcodeStatus").textContent =
-      "Enter a barcode containing 8 to 14 digits.";
-    return;
-  }
-
-  clearProduct();
-  $("barcodeStatus").textContent =
-    "Searching Open Food Facts...";
-
-  try {
-    const url = OFF_URL + encodeURIComponent(barcode) +
-      ".json?fields=code,product_name,product_name_en,brands," +
-      "quantity,packaging,image_front_url,image_url,categories," +
-      "countries,labels";
-
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        "Accept": "application/json"
-      },
-      cache: "no-store"
-    });
-
-    if (!response.ok) {
-      throw new Error(
-        "Open Food Facts returned HTTP " + response.status
+    return new Promise(resolve => {
+      navigator.geolocation.getCurrentPosition(
+        p => {
+          position = {
+            latitude: p.coords.latitude,
+            longitude: p.coords.longitude
+          };
+          show("gpsStatus",
+            `Location captured.\nLatitude: ${position.latitude}\nLongitude: ${position.longitude}`);
+          resolve(true);
+        },
+        err => {
+          position = null;
+          const messages = {
+            1: "Location permission denied. Allow location access in your browser settings.",
+            2: "Your location could not be determined. Check GPS and try again.",
+            3: "Location request timed out. Try again."
+          };
+          show("gpsStatus", messages[err.code] || "Could not get your location.");
+          resolve(false);
+        },
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
       );
-    }
+    });
+  }
 
-    const data = await response.json();
+  async function ensureLocation() {
+    if (position) return true;
+    return await getLocation();
+  }
 
-    if (Number(data.status) !== 1 || !data.product) {
-      $("barcodeStatus").textContent =
-        "Product not found in Open Food Facts. Try checking the barcode digits. This does not mean the product is counterfeit.";
+  async function lookupProduct() {
+    if (lookupBusy) return;
+    if (!await ensureLocation()) return;
+
+    const barcode = $("barcode").value.trim().replace(/\s/g, "");
+    if (!/^\d{8,14}$/.test(barcode)) {
+      show("productStatus", "Enter a barcode containing 8–14 digits.");
       return;
     }
 
-    const p = data.product;
+    lookupBusy = true;
+    $("lookupButton").disabled = true;
+    $("productCard").replaceChildren();
+    lastProduct = null;
+    show("productStatus", "Looking up product in Open Food Facts...");
 
-    product = {
-      found: true,
-      barcode: barcode,
-      name: p.product_name || p.product_name_en || "Name unavailable",
-      brand: p.brands || "Not listed",
-      quantity: p.quantity || "Not listed",
-      packaging: p.packaging || "Not listed",
-      categories: p.categories || "Not listed",
-      countries: p.countries || "Not listed",
-      labels: p.labels || "Not listed",
-      image: p.image_front_url || p.image_url || ""
-    };
-
-    // Display the product details card
-    $("productName").textContent = product.name;
-    $("productBrand").textContent = "Brand: " + product.brand;
-
-    const details = [
-      ["Barcode", product.barcode],
-      ["Quantity", product.quantity],
-      ["Packaging", product.packaging],
-      ["Category", product.categories],
-      ["Countries listed", product.countries],
-      ["Labels", product.labels]
-    ];
-
-    $("productDetails").replaceChildren();
-
-    details.forEach(([label, value]) => {
-      const row = document.createElement("div");
-      const strong = document.createElement("strong");
-      strong.textContent = label + ": ";
-      row.appendChild(strong);
-      row.appendChild(document.createTextNode(value));
-      $("productDetails").appendChild(row);
-    });
-
-    $("productCard").style.display = "block";
-
-    const image = $("productImage");
-    $("imageUnavailable").classList.add("hidden");
-
-    if (product.image) {
-      image.onload = () => {
-        image.classList.remove("hidden");
-        $("imageUnavailable").classList.add("hidden");
-      };
-
-      image.onerror = () => {
-        image.removeAttribute("src");
-        image.classList.add("hidden");
-        $("imageUnavailable").classList.remove("hidden");
-      };
-
-      image.src = product.image;
-      image.classList.remove("hidden");
-    } else {
-      image.removeAttribute("src");
-      image.classList.add("hidden");
-      $("imageUnavailable").classList.remove("hidden");
-    }
-
-    $("barcodeStatus").textContent =
-      "Product found. Review the picture and details below.";
-    updateVerifyButton();
-
-  } catch (error) {
-    clearProduct();
-    $("barcodeStatus").textContent =
-      "Product lookup failed: " + error.message +
-      ". Check your connection and try again.";
-  }
-}
-
-$("lookupButton").addEventListener("click", lookupProduct);
-
-$("barcodeInput").addEventListener("input", () => {
-  clearProduct();
-});
-
-$("serialInput").addEventListener("input", updateVerifyButton);
-
-/* Barcode live camera */
-
-async function stopBarcodeCamera() {
-  if (barcodeScanner) {
-    const scanner = barcodeScanner;
-    barcodeScanner = null;
     try {
-      if (scanner.isScanning) await scanner.stop();
-      await scanner.clear();
-    } catch (_) {}
-  }
+      const response = await fetch(PRODUCT_LOOKUP_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": SUPABASE_PUBLISHABLE_KEY
+        },
+        body: JSON.stringify({ barcode })
+      });
 
-  $("barcode-reader").classList.add("hidden");
-  $("stopBarcodeButton").classList.add("hidden");
-  $("barcodeCameraButton").disabled = !gps;
-}
+      const raw = await response.text();
+      let data;
+      try { data = JSON.parse(raw); }
+      catch { throw new Error(`Lookup returned non-JSON data (HTTP ${response.status}).`); }
 
-$("barcodeCameraButton").addEventListener("click", async () => {
-  if (!gps || typeof Html5Qrcode === "undefined") {
-    $("barcodeStatus").textContent =
-      "GPS is required and the scanner library must load.";
-    return;
-  }
-
-  $("barcode-reader").classList.remove("hidden");
-  $("barcodeCameraButton").disabled = true;
-  $("stopBarcodeButton").classList.remove("hidden");
-  $("barcodeStatus").textContent = "Opening barcode camera...";
-
-  try {
-    barcodeScanner = new Html5Qrcode("barcode-reader", {
-      formatsToSupport: [
-        Html5QrcodeSupportedFormats.EAN_13,
-        Html5QrcodeSupportedFormats.EAN_8,
-        Html5QrcodeSupportedFormats.UPC_A,
-        Html5QrcodeSupportedFormats.UPC_E,
-        Html5QrcodeSupportedFormats.CODE_128,
-        Html5QrcodeSupportedFormats.CODE_39,
-        Html5QrcodeSupportedFormats.ITF
-      ],
-      verbose: false
-    });
-
-    await barcodeScanner.start(
-      { facingMode: "environment" },
-      { fps: 10, qrbox: { width: 280, height: 130 } },
-      async decodedText => {
-        $("barcodeInput").value = normalizeBarcode(decodedText);
-        await stopBarcodeCamera();
-        await lookupProduct();
-      },
-      () => {}
-    );
-
-    $("barcodeStatus").textContent =
-      "Point your camera at the barcode.";
-
-  } catch (error) {
-    $("barcodeStatus").textContent =
-      "Camera error: " + error.message +
-      ". Allow camera permission and try again.";
-    await stopBarcodeCamera();
-  }
-});
-
-$("stopBarcodeButton").addEventListener("click", stopBarcodeCamera);
-
-/* Barcode image upload */
-
-$("barcodeFile").addEventListener("change", async () => {
-  const file = $("barcodeFile").files[0];
-  if (!file) return;
-
-  let scanner;
-
-  try {
-    $("barcodeStatus").textContent = "Reading barcode image...";
-
-    // Use a temporary visible scanning element for image decoding.
-    const temporary = document.createElement("div");
-    temporary.style.position = "fixed";
-    temporary.style.left = "0";
-    temporary.style.top = "0";
-    temporary.style.width = "1px";
-    temporary.style.height = "1px";
-    temporary.style.overflow = "hidden";
-    document.body.appendChild(temporary);
-
-    scanner = new Html5Qrcode(temporary);
-
-    const decoded = await scanner.scanFile(file, false);
-    $("barcodeInput").value = normalizeBarcode(decoded);
-    await scanner.clear();
-    scanner = null;
-    temporary.remove();
-
-    await lookupProduct();
-
-  } catch (_) {
-    $("barcodeStatus").textContent =
-      "Could not read a barcode from that image. Try a clearer picture.";
-    if (scanner) {
-      try { await scanner.clear(); } catch (_) {}
-    }
-    const temporaryElements = document.querySelectorAll("body > div");
-    temporaryElements.forEach(el => {
-      if (el.style.position === "fixed" && el.style.overflow === "hidden") {
-        el.remove();
+      if (!response.ok) {
+        throw new Error(data.error || `Lookup failed with HTTP ${response.status}.`);
       }
-    });
-  } finally {
-    $("barcodeFile").value = "";
-  }
-});
 
-/* QR live camera only */
+      if (!data.found) {
+        show("productStatus", data.message || "Product not found in the catalogue.");
+        return;
+      }
 
-function extractQrToken(value) {
-  const raw = String(value || "").trim();
-  if (!raw) return "";
+      lastProduct = data;
+      show("productStatus", "Product information found.");
 
-  try {
-    const url = new URL(raw);
-    const token =
-      url.searchParams.get("qr_token") ||
-      url.searchParams.get("token");
-    if (token) return token.trim();
-  } catch (_) {}
+      const card = $("productCard");
+      const title = document.createElement("h3");
+      title.textContent = data.name || "Unknown product";
+      card.appendChild(title);
 
-  return raw;
-}
+      if (data.image) {
+        const img = document.createElement("img");
+        img.className = "product";
+        img.alt = "Product image";
+        img.src = data.image;
+        img.onerror = () => img.remove();
+        card.appendChild(img);
+      }
 
-async function stopQrCamera() {
-  if (qrScanner) {
-    const scanner = qrScanner;
-    qrScanner = null;
-    try {
-      if (scanner.isScanning) await scanner.stop();
-      await scanner.clear();
-    } catch (_) {}
-  }
-
-  $("qr-reader").classList.add("hidden");
-  $("stopQrButton").classList.add("hidden");
-  $("qrCameraButton").disabled = !gps;
-}
-
-$("qrCameraButton").addEventListener("click", async () => {
-  if (!gps || typeof Html5Qrcode === "undefined") {
-    $("qrStatus").textContent =
-      "GPS is required and the scanner library must load.";
-    return;
-  }
-
-  $("qr-reader").classList.remove("hidden");
-  $("qrCameraButton").disabled = true;
-  $("stopQrButton").classList.remove("hidden");
-  $("qrStatus").textContent = "Opening QR camera...";
-
-  try {
-    qrScanner = new Html5Qrcode("qr-reader", {
-      formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
-      verbose: false
-    });
-
-    await qrScanner.start(
-      { facingMode: "environment" },
-      { fps: 10, qrbox: { width: 240, height: 240 } },
-      async decodedText => {
-        qrToken = extractQrToken(decodedText);
-        $("qrStatus").textContent =
-          "QR code captured. Token ready for verification.";
-        await stopQrCamera();
-        updateVerifyButton();
-      },
-      () => {}
-    );
-
-    $("qrStatus").textContent =
-      "Point the camera at the bottle QR code.";
-
-  } catch (error) {
-    $("qrStatus").textContent =
-      "QR camera error: " + error.message +
-      ". Allow camera access and try again.";
-    await stopQrCamera();
-  }
-});
-
-$("stopQrButton").addEventListener("click", stopQrCamera);
-
-/* Supabase bottle verification */
-
-$("verifyButton").addEventListener("click", async () => {
-  if (!gps || !product || !product.found || !qrToken) {
-    setResult("Verification blocked. Detect GPS, find the product and scan the QR code first.");
-    return;
-  }
-
-  const serial = $("serialInput").value.trim();
-
-  if (!serial) {
-    setResult("Enter the bottle's printed serial number.");
-    return;
-  }
-
-  busy = true;
-  updateVerifyButton();
-  setResult("Submitting verification request...");
-
-  try {
-    const response = await fetch(FUNCTION_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "apikey": SUPABASE_KEY,
-        "Authorization": "Bearer " + SUPABASE_KEY
-      },
-      body: JSON.stringify({
-        serial_number: serial,
-        qr_token: qrToken,
-        barcode: product.barcode,
-        latitude: gps.latitude,
-        longitude: gps.longitude
-      })
-    });
-
-    const responseText = await response.text();
-    let data;
-
-    try {
-      data = JSON.parse(responseText);
-    } catch (_) {
-      data = { response: responseText };
+      const details = document.createElement("p");
+      details.className = "status";
+      details.textContent =
+        `Barcode: ${data.barcode}\n` +
+        `Brand: ${data.brands}\n` +
+        `Quantity: ${data.quantity}\n` +
+        `Packaging: ${data.packaging}\n` +
+        `Source: ${data.source}\n\n` +
+        "Catalogue match is not proof of authenticity.";
+      card.appendChild(details);
+    } catch (err) {
+      show("productStatus",
+        `${err.message || "Product lookup failed."}\n\n` +
+        "Check your internet connection and confirm the product-lookup function is deployed.");
+    } finally {
+      lookupBusy = false;
+      $("lookupButton").disabled = false;
     }
+  }
 
-    if (!response.ok) {
-      setResult(
-        "BACKEND REQUEST FAILED\nHTTP status: " + response.status +
-        "\n\n" + JSON.stringify(data, null, 2)
+  async function stopScanner(which) {
+    const scanner = which === "barcode" ? barcodeScanner : qrScanner;
+    if (scanner) {
+      try {
+        if (scanner.isScanning) await scanner.stop();
+        await scanner.clear();
+      } catch (_) {}
+      if (which === "barcode") barcodeScanner = null;
+      else qrScanner = null;
+    }
+  }
+
+  async function startScanner(which) {
+    if (!await ensureLocation()) return;
+
+    const isQR = which === "qr";
+    const readerId = isQR ? "qrReader" : "barcodeReader";
+
+    await stopScanner(which);
+    const scanner = new Html5Qrcode(readerId);
+    if (isQR) qrScanner = scanner;
+    else barcodeScanner = scanner;
+
+    const config = isQR
+      ? { fps: 10, qrbox: { width: 240, height: 240 } }
+      : { fps: 10, qrbox: { width: 280, height: 140 },
+          formatsToSupport: [
+            Html5QrcodeSupportedFormats.EAN_13,
+            Html5QrcodeSupportedFormats.EAN_8,
+            Html5QrcodeSupportedFormats.UPC_A,
+            Html5QrcodeSupportedFormats.UPC_E,
+            Html5QrcodeSupportedFormats.CODE_128,
+            Html5QrcodeSupportedFormats.CODE_39
+          ] };
+
+    try {
+      await scanner.start(
+        { facingMode: "environment" },
+        config,
+        async decodedText => {
+          if (isQR) {
+            $("qrToken").value = decodedText.trim();
+            show("qrStatus", "QR captured. Confirm it contains the expected bottle token.");
+            await stopScanner("qr");
+          } else {
+            $("barcode").value = decodedText.replace(/\s/g, "");
+            show("productStatus", "Barcode scanned. Looking up product...");
+            await stopScanner("barcode");
+            await lookupProduct();
+          }
+        },
+        () => {}
       );
+    } catch (err) {
+      await stopScanner(which);
+      show(isQR ? "qrStatus" : "productStatus",
+        `Could not start camera: ${err.message || err}. Allow camera permission and use HTTPS.`);
+    }
+  }
+
+  async function scanBarcodeImage(file) {
+    if (!file) return;
+    if (!await ensureLocation()) return;
+
+    show("productStatus", "Reading barcode image...");
+    try {
+      const scanner = new Html5Qrcode("barcodeReader");
+      const result = await scanner.scanFile(file, true);
+      $("barcode").value = result.trim();
+      await scanner.clear();
+      await lookupProduct();
+    } catch (err) {
+      show("productStatus",
+        "Could not read a barcode from that image. Try a clear, straight-on photo or use the camera scanner.");
+    }
+  }
+
+  async function verifyBottle() {
+    if (verifyBusy) return;
+    if (!await ensureLocation()) return;
+
+    const serial_number = $("serial").value.trim();
+    const qr_token = $("qrToken").value.trim();
+    const barcode = $("barcode").value.trim();
+
+    if (!serial_number || !qr_token || !barcode) {
+      show("verifyStatus", "Enter the printed serial number, scan the QR code, and provide the barcode.");
       return;
     }
 
-    setResult(
-      "SUPABASE VERIFICATION RESPONSE\n\n" +
-      JSON.stringify(data, null, 2) +
-      "\n\nPRODUCT IDENTIFIED\n" +
-      product.name + "\nBrand: " + product.brand +
-      "\nBarcode: " + product.barcode +
-      "\n\nSCAN LOCATION\n" +
-      ($("placeName").textContent || "Place name unavailable") +
-      "\nLatitude: " + gps.latitude +
-      "\nLongitude: " + gps.longitude +
-      "\n\nA product catalogue match alone does not establish authenticity."
-    );
+    verifyBusy = true;
+    $("verifyButton").disabled = true;
+    show("verifyStatus", "Submitting bottle details for verification...");
 
-  } catch (error) {
-    setResult(
-      "Could not contact Supabase: " + error.message +
-      "\nCheck internet access, the function URL and backend CORS settings."
-    );
-  } finally {
-    busy = false;
-    updateVerifyButton();
+    try {
+      const response = await fetch(VERIFY_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": SUPABASE_PUBLISHABLE_KEY,
+          "Authorization": "Bearer " + SUPABASE_PUBLISHABLE_KEY
+        },
+        body: JSON.stringify({
+          serial_number,
+          qr_token,
+          barcode,
+          latitude: position.latitude,
+          longitude: position.longitude
+        })
+      });
+
+      const raw = await response.text();
+      let data;
+      try { data = JSON.parse(raw); }
+      catch { throw new Error(`Verification returned non-JSON data (HTTP ${response.status}).`); }
+
+      if (!response.ok) {
+        throw new Error(data.error || data.message || `Verification failed with HTTP ${response.status}.`);
+      }
+
+      show("verifyStatus", JSON.stringify(data, null, 2));
+    } catch (err) {
+      show("verifyStatus",
+        `${err.message || "Verification request failed."}\n\n` +
+        "Check that rapid-service is deployed at the configured endpoint and accepts this request format.");
+    } finally {
+      verifyBusy = false;
+      $("verifyButton").disabled = false;
+    }
   }
-});
+
+  $("gpsButton").addEventListener("click", getLocation);
+  $("lookupButton").addEventListener("click", lookupProduct);
+  $("startBarcode").addEventListener("click", () => startScanner("barcode"));
+  $("stopBarcode").addEventListener("click", () => stopScanner("barcode"));
+  $("startQR").addEventListener("click", () => startScanner("qr"));
+  $("stopQR").addEventListener("click", () => stopScanner("qr"));
+  $("barcodeImage").addEventListener("change", e => scanBarcodeImage(e.target.files[0]));
+  $("verifyButton").addEventListener("click", verifyBottle);
+
+  // Request location immediately; the user can retry with the button.
+  getLocation();
+})();
 </script>
 </body>
 </html>
