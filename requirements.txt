@@ -1,6 +1,7 @@
 
-streamlit>=1.40,<2.0
-requests>=2.31,<3.0
-pandas>=2.1,<3.0
-opencv-python-headless>=4.9,<5.0
-numpy>=1.26,<3.0
+streamlit
+requests
+pandas
+Pillow
+numpy
+zxing-cpp
