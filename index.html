@@ -1,651 +1,377 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Product Verification</title>
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 18px;
-      background: #f3f5f7;
-      color: #17202a;
-    }
-    main { max-width: 600px; margin: auto; }
-    h1 { color: #b5121b; }
-    section {
-      background: white;
-      padding: 16px;
-      margin: 14px 0;
-      border-radius: 12px;
-      box-shadow: 0 2px 8px #0000000d;
-    }
-    label {
-      display: block;
-      font-weight: bold;
-      margin: 12px 0 6px;
-    }
-    input, button {
-      width: 100%;
-      padding: 12px;
-      margin: 5px 0;
-      border-radius: 8px;
-      font-size: 16px;
-    }
-    input { border: 1px solid #bbc3cc; }
-    button {
-      border: 0;
-      background: #b5121b;
-      color: white;
-      font-weight: bold;
-      cursor: pointer;
-    }
-    button.secondary { background: #273746; }
-    button:disabled { opacity: .55; }
-    .status { white-space: pre-wrap; overflow-wrap: anywhere; }
-    .muted { color: #566573; font-size: 14px; }
-    img.product {
-      max-width: 180px;
-      max-height: 200px;
-      object-fit: contain;
-    }
-    #barcodeReader, #qrReader {
-      margin-top: 10px;
-      width: 100%;
-    }
-    .location-box {
-      padding: 12px;
-      background: #f3f5f7;
-      border-radius: 8px;
-      overflow-wrap: anywhere;
-    }
-  </style>
-</head>
-<body>
-<main>
-  <h1>Product Verification</h1>
-  <p class="muted">
-    Check product information and submit a bottle verification scan.
-  </p>
 
-  <section>
-    <h2>1. Location</h2>
-    <div class="location-box">
-      <p id="gpsStatus" class="status">
-        Location has not been detected.
-      </p>
-    </div>
-    <button id="gpsButton">Detect my location</button>
-  </section>
+import re
+import requests
+import streamlit as st
+import streamlit.components.v1 as components
+import pandas as pd
+import zxingcpp
+import numpy as np
+from PIL import Image
 
-  <section>
-    <h2>2. Look up a barcode</h2>
-    <label for="barcode">Product barcode</label>
-    <input id="barcode" inputmode="numeric" autocomplete="off"
-      placeholder="Enter barcode digits">
+SUPABASE_URL = "https://wnjxfwqvxwxnksbyvvug.supabase.co"
+API_KEY = "sb_publishable_weQHFJ5OcI1YB0Xc04ubsg_F_8AMzoS"
 
-    <button id="lookupButton">Find product details</button>
-    <button id="startBarcode" class="secondary">
-      Scan barcode with camera
+LOOKUP_URL = f"{SUPABASE_URL}/functions/v1/smart-action"
+VERIFY_URL = f"{SUPABASE_URL}/functions/v1/rapid-service"
+
+st.set_page_config(page_title="Product Verification", page_icon="🥤")
+
+st.markdown("""
+<style>
+.stApp {background:#f3f5f7}
+h1 {color:#b5121b}
+div[data-testid="stVerticalBlockBorderWrapper"] {
+ background:white; border-radius:12px;
+}
+.stButton button {
+ background:#b5121b;color:white;font-weight:bold;
+ border-radius:8px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+st.title("Product Verification")
+st.caption("Check product information and submit a bottle verification scan.")
+
+for key, default in {
+    "lat": None, "lon": None, "town": "", "region": "",
+    "country": "", "place": "", "barcode": "", "qr": "",
+    "lookup": None, "verification": None
+}.items():
+    if key not in st.session_state:
+        st.session_state[key] = default
+
+
+def headers():
+    return {
+        "Content-Type": "application/json",
+        "apikey": API_KEY,
+        "Authorization": f"Bearer {API_KEY}"
+    }
+
+
+def reverse_geocode(lat, lon):
+    try:
+        r = requests.get(
+            "https://api.bigdatacloud.net/data/reverse-geocode-client",
+            params={
+                "latitude": lat,
+                "longitude": lon,
+                "localityLanguage": "en"
+            },
+            timeout=15
+        )
+        r.raise_for_status()
+        d = r.json()
+        town = d.get("city") or d.get("locality") or ""
+        return town, d.get("principalSubdivision", ""), d.get("countryName", "")
+    except Exception:
+        return "", "", ""
+
+
+def decode_image(file):
+    if file is None:
+        return None
+    try:
+        img = Image.open(file).convert("RGB")
+        results = zxingcpp.read_barcodes(np.array(img))
+        if results:
+            return results[0].text.strip()
+    except Exception:
+        pass
+    return None
+
+
+def api_post(url, payload):
+    r = requests.post(url, headers=headers(), json=payload, timeout=35)
+    try:
+        data = r.json()
+    except ValueError:
+        raise RuntimeError(f"HTTP {r.status_code}: {r.text[:300]}")
+    if not r.ok:
+        raise RuntimeError(
+            f"HTTP {r.status_code}: "
+            f"{data.get('error') or data.get('message') or r.text[:300]}"
+        )
+    return data
+
+
+def capture_location(lat, lon):
+    st.session_state.lat = float(lat)
+    st.session_state.lon = float(lon)
+    town, region, country = reverse_geocode(lat, lon)
+    st.session_state.town = town
+    st.session_state.region = region
+    st.session_state.country = country
+    st.session_state.place = ", ".join(
+        x for x in [town, region, country] if x
+    )
+
+
+# 1. LOCATION
+with st.container(border=True):
+    st.subheader("1. Location")
+
+    components.html("""
+    <button onclick="getLocation()" style="
+      background:#b5121b;color:white;border:0;padding:12px;
+      border-radius:8px;width:100%;font-weight:bold">
+      Detect my location
     </button>
-    <button id="stopBarcode" class="secondary">
-      Stop barcode camera
-    </button>
-    <div id="barcodeReader"></div>
-
-    <label for="barcodeImage">Or upload a barcode image</label>
-    <input id="barcodeImage" type="file" accept="image/*">
-
-    <p id="productStatus" class="status">No product lookup yet.</p>
-    <div id="productCard"></div>
-  </section>
-
-  <section>
-    <h2>3. Scan bottle QR code</h2>
-    <p class="muted">
-      Scan using your camera or upload a QR-code image from your phone.
-    </p>
-
-    <button id="startQR">Start QR camera</button>
-    <button id="stopQR" class="secondary">Stop QR camera</button>
-    <div id="qrReader"></div>
-
-    <label for="qrImage">Upload QR-code image</label>
-    <input id="qrImage" type="file" accept="image/*">
-
-    <label for="qrToken">QR token</label>
-    <input id="qrToken" autocomplete="off"
-      placeholder="Scanned or uploaded QR token">
-
-    <p id="qrStatus" class="status">QR code not scanned.</p>
-  </section>
-
-  <section>
-    <h2>4. Verify bottle</h2>
-    <label for="serial">Printed bottle serial number</label>
-    <input id="serial" autocomplete="off"
-      placeholder="Enter serial number">
-
-    <button id="verifyButton">Verify bottle</button>
-    <p id="verifyStatus" class="status">
-      Waiting for scan details.
-    </p>
-  </section>
-</main>
-
-<script>
-(() => {
-  "use strict";
-
-  const SUPABASE_URL =
-    "https://wnjxfwqvxwxnksbyvvug.supabase.co";
-
-  const PRODUCT_LOOKUP_URL =
-    SUPABASE_URL + "/functions/v1/smart-action";
-
-  const VERIFY_URL =
-    SUPABASE_URL + "/functions/v1/rapid-service";
-
-  const SUPABASE_PUBLISHABLE_KEY =
-    "sb_publishable_weQHFJ5OcI1YB0Xc04ubsg_F_8AMzoS";
-
-  let position = null;
-  let barcodeScanner = null;
-  let qrScanner = null;
-  let lookupBusy = false;
-  let verifyBusy = false;
-
-  const $ = id => document.getElementById(id);
-
-  function show(id, message) {
-    $(id).textContent = message;
-  }
-
-  // Get GPS coordinates and convert them into a readable place name.
-  async function reverseGeocode(latitude, longitude) {
-    const url =
-      "https://api.bigdatacloud.net/data/reverse-geocode-client" +
-      `?latitude=${encodeURIComponent(latitude)}` +
-      `&longitude=${encodeURIComponent(longitude)}` +
-      "&localityLanguage=en";
-
-    try {
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        throw new Error("Reverse geocoding request failed.");
-      }
-
-      const data = await response.json();
-
-      return {
-        town:
-          data.city ||
-          data.locality ||
-          data.localityInfo?.administrative?.[0]?.name ||
-          "",
-        region: data.principalSubdivision || "",
-        country: data.countryName || ""
-      };
-    } catch (error) {
-      console.warn("Place-name lookup failed:", error);
-
-      return {
-        town: "",
-        region: "",
-        country: ""
-      };
-    }
-  }
-
-  async function getLocation() {
-    if (!navigator.geolocation) {
-      show("gpsStatus",
-        "This browser does not support GPS location.");
-      return false;
-    }
-
-    position = null;
-    show("gpsStatus", "Detecting GPS coordinates...");
-
-    return new Promise(resolve => {
-      navigator.geolocation.getCurrentPosition(
-        async p => {
-          const latitude = p.coords.latitude;
-          const longitude = p.coords.longitude;
-
-          position = {
-            latitude,
-            longitude,
-            town: "",
-            region: "",
-            country: "",
-            scan_place: ""
-          };
-
-          show(
-            "gpsStatus",
-            `GPS coordinates detected.
-Latitude: ${latitude}
-Longitude: ${longitude}
-
-Finding town, region and country...`
-          );
-
-          const place = await reverseGeocode(latitude, longitude);
-
-          // Keep the captured coordinates even if geocoding fails.
-          position = {
-            latitude,
-            longitude,
-            ...place,
-            scan_place: [
-              place.town,
-              place.region,
-              place.country
-            ].filter(Boolean).join(", ")
-          };
-
-          show(
-            "gpsStatus",
-            `Detected location:
-Town/Locality: ${place.town || "Unavailable"}
-State/Region: ${place.region || "Unavailable"}
-Country: ${place.country || "Unavailable"}
-
-Latitude: ${latitude}
-Longitude: ${longitude}`
-          );
-
-          resolve(true);
-        },
-        err => {
-          const messages = {
-            1: "Location permission denied. Allow location access in browser settings.",
-            2: "Location could not be determined. Check GPS and try again.",
-            3: "Location request timed out. Try again."
-          };
-
-          show(
-            "gpsStatus",
-            messages[err.code] || "Could not get your location."
-          );
-
-          resolve(false);
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 20000,
-          maximumAge: 0
-        }
-      );
-    });
-  }
-
-  async function ensureLocation() {
-    if (position) return true;
-    return await getLocation();
-  }
-
-  async function lookupProduct() {
-    if (lookupBusy) return;
-
-    if (!await ensureLocation()) return;
-
-    const barcode = $("barcode").value.trim().replace(/\s/g, "");
-
-    if (!/^\d{8,14}$/.test(barcode)) {
-      show("productStatus",
-        "Enter a barcode containing 8–14 digits.");
-      return;
-    }
-
-    lookupBusy = true;
-    $("lookupButton").disabled = true;
-    $("productCard").replaceChildren();
-
-    show("productStatus",
-      "Looking up product information...");
-
-    try {
-      const response = await fetch(PRODUCT_LOOKUP_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "apikey": SUPABASE_PUBLISHABLE_KEY
-        },
-        body: JSON.stringify({ barcode })
-      });
-
-      const raw = await response.text();
-      let data;
-
-      try {
-        data = JSON.parse(raw);
-      } catch {
-        throw new Error(
-          `Non-JSON response (HTTP ${response.status}): ${raw.slice(0, 300)}`
-        );
-      }
-
-      if (!response.ok) {
-        throw new Error(
-          `HTTP ${response.status}: ${
-            data.error || data.message || raw.slice(0, 300)
-          }`
-        );
-      }
-
-      if (!data.found) {
-        show(
-          "productStatus",
-          data.message ||
-          "Barcode not found. This does not by itself prove the product is counterfeit."
-        );
+    <p id="status">Location has not been detected.</p>
+    <script>
+    function getLocation() {
+      const s = document.getElementById('status');
+      if (!navigator.geolocation) {
+        s.innerText = 'GPS is not supported by this browser.';
         return;
       }
-
-      show("productStatus", "Product information found.");
-
-      const card = $("productCard");
-      const title = document.createElement("h3");
-      title.textContent = data.name || "Unknown product";
-      card.appendChild(title);
-
-      if (data.image) {
-        const img = document.createElement("img");
-        img.className = "product";
-        img.alt = "Product image";
-        img.src = data.image;
-        img.onerror = () => img.remove();
-        card.appendChild(img);
-      }
-
-      const details = document.createElement("p");
-      details.className = "status";
-      details.textContent =
-        `Barcode: ${data.barcode || barcode}
-Brand: ${data.brands || "Not provided"}
-Quantity: ${data.quantity || "Not provided"}
-Packaging: ${data.packaging || "Not provided"}
-Source: ${data.source || "Open Food Facts"}
-
-A catalogue match is not proof of authenticity.`;
-
-      card.appendChild(details);
-
-    } catch (err) {
-      show("productStatus",
-        `Product lookup error:\n${err.message || String(err)}`);
-      console.error(err);
-    } finally {
-      lookupBusy = false;
-      $("lookupButton").disabled = false;
-    }
-  }
-
-  async function stopScanner(which) {
-    const scanner =
-      which === "barcode" ? barcodeScanner : qrScanner;
-
-    if (scanner) {
-      try {
-        if (scanner.isScanning) {
-          await scanner.stop();
-        }
-        await scanner.clear();
-      } catch (err) {
-        console.warn("Scanner cleanup:", err);
-      }
-
-      if (which === "barcode") {
-        barcodeScanner = null;
-      } else {
-        qrScanner = null;
-      }
-    }
-  }
-
-  async function startScanner(which) {
-    if (!await ensureLocation()) return;
-
-    if (typeof Html5Qrcode === "undefined") {
-      show(
-        which === "qr" ? "qrStatus" : "productStatus",
-        "Scanner library failed to load. Check your internet connection."
-      );
-      return;
-    }
-
-    // Stop an existing scanner before creating a new one.
-    await stopScanner(which);
-
-    const isQR = which === "qr";
-    const readerId = isQR ? "qrReader" : "barcodeReader";
-    const scanner = new Html5Qrcode(readerId);
-
-    if (isQR) qrScanner = scanner;
-    else barcodeScanner = scanner;
-
-    const config = isQR
-      ? {
-          fps: 10,
-          qrbox: { width: 240, height: 240 },
-          formatsToSupport: [
-            Html5QrcodeSupportedFormats.QR_CODE
-          ]
-        }
-      : {
-          fps: 10,
-          qrbox: { width: 280, height: 140 },
-          formatsToSupport: [
-            Html5QrcodeSupportedFormats.EAN_13,
-            Html5QrcodeSupportedFormats.EAN_8,
-            Html5QrcodeSupportedFormats.UPC_A,
-            Html5QrcodeSupportedFormats.UPC_E,
-            Html5QrcodeSupportedFormats.CODE_128,
-            Html5QrcodeSupportedFormats.CODE_39
-          ]
-        };
-
-    try {
-      await scanner.start(
-        { facingMode: "environment" },
-        config,
-        async decodedText => {
-          if (isQR) {
-            $("qrToken").value = decodedText.trim();
-            show("qrStatus",
-              "QR code captured successfully.");
-            await stopScanner("qr");
-          } else {
-            $("barcode").value =
-              decodedText.trim().replace(/\s/g, "");
-
-            show("productStatus",
-              "Barcode scanned. Looking up product...");
-
-            await stopScanner("barcode");
-            await lookupProduct();
-          }
+      s.innerText = 'Requesting GPS permission...';
+      navigator.geolocation.getCurrentPosition(
+        p => {
+          s.innerText = 'Coordinates detected: ' +
+            p.coords.latitude + ', ' + p.coords.longitude +
+            '. Copy them into the coordinate fields below.';
+          document.getElementById('lat').value = p.coords.latitude;
+          document.getElementById('lon').value = p.coords.longitude;
         },
-        () => {}
-      );
-    } catch (err) {
-      await stopScanner(which);
-
-      show(
-        isQR ? "qrStatus" : "productStatus",
-        `Could not start camera: ${err.message || String(err)}`
+        e => s.innerText = 'Location error: ' + e.message,
+        {enableHighAccuracy:true, timeout:20000}
       );
     }
-  }
+    </script>
+    """, height=120)
 
-  // Read an uploaded barcode image or QR-code image.
-  async function scanUploadedImage(file, type) {
-    if (!file) return;
+    st.caption("Enter the coordinates detected above.")
+    c1, c2 = st.columns(2)
+    lat = c1.number_input("Latitude", min_value=-90.0, max_value=90.0, value=0.0, format="%.7f", key="lat_input")
+    lon = c2.number_input("Longitude", min_value=-180.0, max_value=180.0, value=0.0, format="%.7f", key="lon_input")
 
-    if (!await ensureLocation()) return;
+    if st.button("Save location"):
+        if lat == 0 and lon == 0:
+            st.error("Enter your actual coordinates.")
+        else:
+            capture_location(lat, lon)
+            st.success("Location saved.")
+            st.write({
+                "Town": st.session_state.town or "Unavailable",
+                "Region": st.session_state.region or "Unavailable",
+                "Country": st.session_state.country or "Unavailable",
+                "Latitude": st.session_state.lat,
+                "Longitude": st.session_state.lon
+            })
 
-    if (typeof Html5Qrcode === "undefined") {
-      show(
-        type === "qr" ? "qrStatus" : "productStatus",
-        "Scanner library failed to load."
-      );
-      return;
-    }
 
-    const isQR = type === "qr";
-    const statusId = isQR ? "qrStatus" : "productStatus";
-    const readerId = isQR ? "qrReader" : "barcodeReader";
+# 2. BARCODE LOOKUP
+with st.container(border=True):
+    st.subheader("2. Look up a barcode")
 
-    // Stop the live camera before using the same reader for an image.
-    await stopScanner(type === "qr" ? "qr" : "barcode");
+    barcode = st.text_input(
+        "Product barcode",
+        value=st.session_state.barcode,
+        placeholder="Enter barcode digits"
+    )
+    st.session_state.barcode = barcode.strip().replace(" ", "")
 
-    show(statusId,
-      isQR ? "Reading uploaded QR image..." :
-        "Reading uploaded barcode image...");
+    photo = st.camera_input("Scan barcode with camera")
+    if photo:
+        value = decode_image(photo)
+        if value:
+            st.session_state.barcode = value
+            st.success(f"Barcode captured: {value}")
+        else:
+            st.warning("Barcode not detected. Try a clearer photo.")
 
-    const scanner = new Html5Qrcode(readerId);
+    upload = st.file_uploader(
+        "Or upload a barcode image",
+        type=["png", "jpg", "jpeg", "webp"],
+        key="barcode_upload"
+    )
+    if upload and st.button("Read barcode image"):
+        value = decode_image(upload)
+        if value:
+            st.session_state.barcode = value
+            st.success(f"Barcode captured: {value}")
+        else:
+            st.error("Could not read the barcode.")
 
-    try {
-      const decodedText = await scanner.scanFile(file, true);
-      const value = decodedText.trim();
+    if st.button("Find product details"):
+        code = st.session_state.barcode
+        if not re.fullmatch(r"\d{8,14}", code):
+            st.error("Enter a barcode containing 8–14 digits.")
+        else:
+            try:
+                with st.spinner("Looking up product..."):
+                    st.session_state.lookup = api_post(
+                        LOOKUP_URL, {"barcode": code}
+                    )
+            except Exception as e:
+                st.session_state.lookup = {"error": str(e)}
 
-      if (isQR) {
-        $("qrToken").value = value;
-        show("qrStatus",
-          "QR image decoded successfully. Check the token before verification.");
-      } else {
-        $("barcode").value = value.replace(/\s/g, "");
-        await lookupProduct();
-      }
-    } catch (err) {
-      show(
-        statusId,
-        isQR
-          ? "Could not read a QR code from this image. Try a clearer, well-lit image with the entire QR code visible."
-          : "Could not read a barcode from this image. Try a clearer image or use the camera."
-      );
+    data = st.session_state.lookup
+    if data:
+        if data.get("error"):
+            st.error(data["error"])
+        elif not data.get("found"):
+            st.warning(data.get("message", "Product not found. This alone does not prove a product is counterfeit."))
+        else:
+            st.success("Product information found.")
+            st.subheader(data.get("name", "Unknown product"))
+            if data.get("image"):
+                st.image(data["image"], width=180)
+            st.write({
+                "Barcode": data.get("barcode"),
+                "Brand": data.get("brands"),
+                "Quantity": data.get("quantity"),
+                "Packaging": data.get("packaging"),
+                "Source": data.get("source")
+            })
+            st.caption("A catalogue match does not prove authenticity.")
 
-      console.warn("Image scan failed:", err);
-    } finally {
-      try {
-        await scanner.clear();
-      } catch (_) {}
-    }
-  }
 
-  async function verifyBottle() {
-    if (verifyBusy) return;
+# 3. QR CODE
+with st.container(border=True):
+    st.subheader("3. Scan bottle QR code")
 
-    if (!await ensureLocation()) return;
+    qr_photo = st.camera_input("Capture QR code", key="qr_camera")
+    if qr_photo:
+        value = decode_image(qr_photo)
+        if value:
+            st.session_state.qr = value
+            st.success("QR code captured.")
+        else:
+            st.warning("Could not read the QR code. Try again.")
 
-    const serial_number = $("serial").value.trim();
-    const qr_token = $("qrToken").value.trim();
-    const barcode = $("barcode").value.trim();
+    qr_upload = st.file_uploader(
+        "Upload QR-code image",
+        type=["png", "jpg", "jpeg", "webp"],
+        key="qr_upload"
+    )
+    if qr_upload and st.button("Read QR image"):
+        value = decode_image(qr_upload)
+        if value:
+            st.session_state.qr = value
+            st.success("QR image decoded.")
+        else:
+            st.error("Could not read a QR code from this image.")
 
-    if (!serial_number || !qr_token || !barcode) {
-      show(
-        "verifyStatus",
-        "Enter the printed serial number, scan or upload the QR code, and provide the barcode."
-      );
-      return;
-    }
+    st.session_state.qr = st.text_input(
+        "QR token",
+        value=st.session_state.qr,
+        placeholder="Scanned or uploaded QR token"
+    ).strip()
 
-    verifyBusy = true;
-    $("verifyButton").disabled = true;
 
-    show("verifyStatus",
-      "Submitting bottle details for verification...");
+# 4. VERIFY BOTTLE
+with st.container(border=True):
+    st.subheader("4. Verify bottle")
 
-    try {
-      const response = await fetch(VERIFY_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "apikey": SUPABASE_PUBLISHABLE_KEY,
-          "Authorization": "Bearer " + SUPABASE_PUBLISHABLE_KEY
-        },
-        body: JSON.stringify({
-          serial_number,
-          qr_token,
-          barcode,
-          latitude: position.latitude,
-          longitude: position.longitude,
-          town: position.town,
-          region: position.region,
-          country: position.country,
-          scan_place: position.scan_place
-        })
-      });
+    serial = st.text_input(
+        "Printed bottle serial number",
+        placeholder="Enter serial number"
+    )
 
-      const raw = await response.text();
-      let data;
+    if st.button("Verify bottle", use_container_width=True):
+        if not serial.strip() or not st.session_state.qr or not st.session_state.barcode:
+            st.error("Enter the serial number, QR token and barcode.")
+        elif st.session_state.lat is None:
+            st.error("Detect and save your location first.")
+        else:
+            payload = {
+                "serial_number": serial.strip(),
+                "qr_token": st.session_state.qr,
+                "barcode": st.session_state.barcode,
+                "latitude": st.session_state.lat,
+                "longitude": st.session_state.lon,
+                "town": st.session_state.town,
+                "region": st.session_state.region,
+                "country": st.session_state.country,
+                "scan_place": st.session_state.place
+            }
+            try:
+                with st.spinner("Verifying bottle..."):
+                    st.session_state.verification = api_post(
+                        VERIFY_URL, payload
+                    )
+            except Exception as e:
+                st.session_state.verification = {"error": str(e)}
 
-      try {
-        data = JSON.parse(raw);
-      } catch {
-        throw new Error(
-          `Non-JSON response (HTTP ${response.status}): ${raw.slice(0, 300)}`
-        );
-      }
+    result = st.session_state.verification
+    if result:
+        if result.get("error"):
+            st.error(f"Verification error: {result['error']}")
+        else:
+            st.subheader(
+                "Result: " + str(result.get("verification", "UNKNOWN"))
+            )
+            a, b, c = st.columns(3)
+            a.metric("Identifiers match", "Yes" if result.get("identifiers_match") else "No")
+            b.metric("Risk level", result.get("risk_level", "Unknown"))
+            c.metric("Risk score", result.get("risk_score", "N/A"))
+            if result.get("product"):
+                st.markdown("**Registered product**")
+                st.json(result["product"])
+            if result.get("risk_reasons"):
+                st.markdown("**Risk reasons**")
+                for reason in result["risk_reasons"]:
+                    st.write(f"- {reason}")
+            st.markdown("**Full verification response**")
+            st.json(result)
+            if result.get("note"):
+                st.caption(result["note"])
 
-      if (!response.ok) {
-        throw new Error(
-          `HTTP ${response.status}: ${
-            data.error || data.message || raw.slice(0, 300)
-          }`
-        );
-      }
 
-      show("verifyStatus", JSON.stringify(data, null, 2));
+# ADMIN DASHBOARD
+st.divider()
+with st.expander("Admin dashboard: scan history and risk summaries"):
+    st.warning("Admin only. Never put the Supabase service-role key in this file.")
+    try:
+        admin_password = st.secrets["ADMIN_PASSWORD"]
+        service_key = st.secrets["SUPABASE_SERVICE_ROLE_KEY"]
+    except Exception:
+        st.info("Add ADMIN_PASSWORD and SUPABASE_SERVICE_ROLE_KEY in Streamlit Secrets to enable this dashboard.")
+    else:
+        entered = st.text_input("Admin password", type="password")
+        if st.button("Unlock dashboard"):
+            st.session_state.admin_ok = entered == admin_password
 
-    } catch (err) {
-      show("verifyStatus",
-        `Verification error:\n${err.message || String(err)}`);
-      console.error(err);
-    } finally {
-      verifyBusy = false;
-      $("verifyButton").disabled = false;
-    }
-  }
-
-  $("gpsButton").addEventListener("click", getLocation);
-  $("lookupButton").addEventListener("click", lookupProduct);
-
-  $("startBarcode").addEventListener(
-    "click", () => startScanner("barcode")
-  );
-  $("stopBarcode").addEventListener(
-    "click", () => stopScanner("barcode")
-  );
-
-  $("startQR").addEventListener(
-    "click", () => startScanner("qr")
-  );
-  $("stopQR").addEventListener(
-    "click", () => stopScanner("qr")
-  );
-
-  $("barcodeImage").addEventListener("change", event => {
-    scanUploadedImage(event.target.files[0], "barcode");
-    event.target.value = "";
-  });
-
-  $("qrImage").addEventListener("change", event => {
-    scanUploadedImage(event.target.files[0], "qr");
-    event.target.value = "";
-  });
-
-  $("verifyButton").addEventListener("click", verifyBottle);
-
-  // Detect location on page load.
-  getLocation();
-})();
-</script>
-</body>
-</html>
+        if st.session_state.get("admin_ok"):
+            try:
+                r = requests.get(
+                    f"{SUPABASE_URL}/rest/v1/bottle_scans",
+                    headers={
+                        "apikey": service_key,
+                        "Authorization": f"Bearer {service_key}"
+                    },
+                    params={
+                        "select": "*",
+                        "order": "scanned_at.desc",
+                        "limit": "1000"
+                    },
+                    timeout=30
+                )
+                r.raise_for_status()
+                df = pd.DataFrame(r.json())
+                if df.empty:
+                    st.info("No scans found.")
+                else:
+                    x, y = st.columns(2)
+                    x.metric("Scans loaded", len(df))
+                    y.metric(
+                        "Unique serials",
+                        df["serial_number"].nunique()
+                        if "serial_number" in df else "N/A"
+                    )
+                    if "scan_result" in df:
+                        st.markdown("**Scan result summary**")
+                        st.bar_chart(df["scan_result"].fillna("Unknown").value_counts())
+                    st.markdown("**Recent scan history**")
+                    st.dataframe(df, use_container_width=True, hide_index=True)
+                    st.download_button(
+                        "Download scan history CSV",
+                        df.to_csv(index=False).encode("utf-8"),
+                        "bottle_scans.csv",
+                        "text/csv"
+                    )
+            except Exception as e:
+                st.error(f"Could not load dashboard: {e}")
