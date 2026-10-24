@@ -1,0 +1,30 @@
+
+{
+  "expo": {
+    "name": "VERITY",
+    "slug": "verity-food-authentication",
+    "version": "1.0.0",
+    "scheme": "verity",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "android": {
+      "package": "com.darkmoor.verity",
+      "versionCode": 1
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow VERITY to scan food products."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow VERITY to use your location when needed."
+        }
+      ]
+    ]
+  }
+}
