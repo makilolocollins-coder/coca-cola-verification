@@ -25,6 +25,11 @@
           "locationWhenInUsePermission": "Allow VERITY to use your location when needed."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "e3dcee6b-af19-4068-bb52-8ccac6365166"
+      }
+    }
   }
 }
