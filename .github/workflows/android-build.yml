@@ -1,5 +1,5 @@
 
-name: VERITY Android Build
+name: VERITY Android APK Build
 
 on:
   workflow_dispatch:
@@ -17,8 +17,6 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: mobile/package-lock.json
 
       - name: Install dependencies
         working-directory: mobile
@@ -27,3 +25,13 @@ jobs:
       - name: Check Expo configuration
         working-directory: mobile
         run: npx expo config --json
+
+      - name: Set up Expo and EAS
+        working-directory: mobile
+        run: npx eas-cli --version
+
+      - name: Build Android APK
+        working-directory: mobile
+        run: npx eas-cli build --platform android --profile preview --non-interactive
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
