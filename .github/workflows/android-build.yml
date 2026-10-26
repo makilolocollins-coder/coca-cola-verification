@@ -24,13 +24,13 @@ jobs:
       - name: Install dependencies
         working-directory: mobile
         run: npm install
-
+        
       - name: Save package lock file
         uses: actions/upload-artifact@v4
         with:
           name: verity-package-lock
           path: mobile/package-lock.json
-      
+          if-no-files-found: error
 
       - name: Check Expo configuration
         working-directory: mobile
