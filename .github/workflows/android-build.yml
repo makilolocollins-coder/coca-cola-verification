@@ -4,6 +4,9 @@ name: VERITY Android APK Build
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build Android APK
@@ -12,25 +15,27 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+        with:
+          persist-credentials: true
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: mobile/package-lock.json
 
-          
-      - name: Install dependencies
+      - name: Install dependencies and generate lock file
         working-directory: mobile
         run: npm install
-        
-      - name: Save package lock file
-        uses: actions/upload-artifact@v4
-        with:
-          name: verity-package-lock
-          path: mobile/package-lock.json
-          if-no-files-found: error
+
+      - name: Commit package lock file
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mobile/package-lock.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Add mobile package lock file"
+            git push
+          fi
 
       - name: Check Expo configuration
         working-directory: mobile
@@ -40,7 +45,7 @@ jobs:
         working-directory: mobile
         run: npx expo-doctor
 
-      - name: Set up Expo and EAS
+      - name: Check EAS CLI
         working-directory: mobile
         run: npx eas-cli --version
 
