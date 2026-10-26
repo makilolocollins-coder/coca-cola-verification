@@ -1,108 +1,83 @@
+
 name: VERITY Android APK Build
 
 on:
-workflow_dispatch:
+  workflow_dispatch:
 
 permissions:
-contents: read
+  contents: read
 
 jobs:
-build:
-name: Build Android APK
-runs-on: ubuntu-latest
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
 
-steps:
-  - name: Checkout repository
-    uses: actions/checkout@v5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
 
-  - name: Set up Node.js
-    uses: actions/setup-node@v6
-    with:
-      node-version: 22
-      cache: npm
-      cache-dependency-path: mobile/package-lock.json
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
 
-  - name: Verify scanner files exist
-    shell: bash
-    run: |
-      set -e
+      - name: Verify scanner files exist
+        shell: bash
+        run: |
+          set -e
+          echo "Current commit:"
+          git rev-parse HEAD
 
-      echo "Current directory:"
-      pwd
+          echo "Scanner files found:"
+          find "$GITHUB_WORKSPACE/mobile/app" -maxdepth 1 -type f -iname '*scanner*' -print
 
-      echo "Repository root:"
-      git rev-parse --show-toplevel
+          echo "Files in mobile/app:"
+          ls -lb "$GITHUB_WORKSPACE/mobile/app/"
 
-      echo "Current commit:"
-      git rev-parse HEAD
+          test -f "$GITHUB_WORKSPACE/mobile/app/scanner-screen.tsx" || {
+            echo "ERROR: scanner-screen.tsx is missing."
+            exit 1
+          }
 
-      echo "Scanner files found:"
-      find "$GITHUB_WORKSPACE/mobile/app" \
-        -maxdepth 1 \
-        -type f \
-        -iname '*scanner*' \
-        -print
+          test -f "$GITHUB_WORKSPACE/mobile/app/screens.tsx" || {
+            echo "ERROR: screens.tsx is missing."
+            exit 1
+          }
 
-      echo "Checking expected scanner path:"
-      ls -lb "$GITHUB_WORKSPACE/mobile/app/"
+          echo "Scanner import:"
+          grep -n 'scanner-screen' "$GITHUB_WORKSPACE/mobile/app/screens.tsx"
 
-      SCANNER="$GITHUB_WORKSPACE/mobile/app/scanner-screen.tsx"
-      SCREENS="$GITHUB_WORKSPACE/mobile/app/screens.tsx"
+      - name: Install dependencies
+        working-directory: mobile
+        run: npm ci
 
-      if [ ! -f "$SCANNER" ]; then
-        echo "ERROR: scanner-screen.tsx is missing at the expected path."
-        exit 1
-      fi
+      - name: Check Expo configuration
+        working-directory: mobile
+        run: npx expo config --json
 
-      if [ ! -f "$SCREENS" ]; then
-        echo "ERROR: screens.tsx is missing."
-        exit 1
-      fi
+      - name: Run Expo Doctor
+        working-directory: mobile
+        run: npx expo-doctor
 
-      echo "Scanner import:"
-      grep -n 'scanner-screen' "$SCREENS"
+      - name: Verify files before EAS upload
+        working-directory: mobile
+        shell: bash
+        run: |
+          set -e
+          ls -l app/scanner-screen.tsx
+          sed -n '1,50p' app/screens.tsx
 
-      echo "SUCCESS: Both scanner files exist."
+          if [ -f .easignore ]; then
+            echo "Contents of .easignore:"
+            cat .easignore
+          else
+            echo "No mobile/.easignore file found."
+          fi
 
-  - name: Install dependencies
-    working-directory: mobile
-    run: npm ci
-
-  - name: Check Expo configuration
-    working-directory: mobile
-    run: npx expo config --json
-
-  - name: Run Expo Doctor
-    working-directory: mobile
-    run: npx expo-doctor
-
-  - name: Verify files before EAS upload
-    working-directory: mobile
-    shell: bash
-    run: |
-      set -e
-
-      echo "Working directory:"
-      pwd
-
-      echo "Scanner screen:"
-      ls -l app/scanner-screen.tsx
-
-      echo "Screen imports:"
-      sed -n '1,50p' app/screens.tsx
-
-      echo "Git ignore status:"
-      git check-ignore -v app/scanner-screen.tsx || true
-
-      echo "EAS ignore file:"
-      if [ -f .easignore ]; then
-        cat .easignore
-      else
-        echo "No mobile/.easignore file found."
-      fi
-
-  - name: Build Android APK
-    working-directory: mobile
-    run: npx eas-cli build --platform android --profile preview --non-interactive
-    env:
-      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      - name: Build Android APK
+        working-directory: mobile
+        run: npx eas-cli build --platform android --profile preview --non-interactive
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
