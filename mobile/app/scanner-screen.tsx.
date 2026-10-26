@@ -1,0 +1,174 @@
+import React from "react";
+import {
+View,
+Text,
+TouchableOpacity,
+StyleSheet,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import {
+CameraView,
+useCameraPermissions,
+} from "expo-camera";
+import { C } from "./components";
+
+type ScannerScreenProps = {
+onScan: (code: string) => void;
+onCancel: () => void;
+};
+
+export default function ScannerScreen({
+onScan,
+onCancel,
+}: ScannerScreenProps) {
+const [permission, requestPermission] =
+useCameraPermissions();
+
+if (!permission) {
+return (
+<View style={styles.center}>
+<Text style={styles.text}>
+Checking camera permission...
+</Text>
+</View>
+);
+}
+
+if (!permission.granted) {
+return (
+<View style={styles.center}>
+<Ionicons
+name="camera-outline"
+size={42}
+color={C.text}
+/>
+<Text style={styles.title}>
+Camera permission required
+</Text>
+<Text style={styles.text}>
+Allow camera access to scan a product barcode.
+</Text>
+<TouchableOpacity
+style={styles.button}
+onPress={requestPermission}
+>
+<Text style={styles.buttonText}>
+Allow camera
+</Text>
+</TouchableOpacity>
+<TouchableOpacity onPress={onCancel}>
+<Text style={styles.cancelText}>Cancel</Text>
+</TouchableOpacity>
+</View>
+);
+}
+
+return (
+<View style={styles.container}>
+<CameraView
+style={StyleSheet.absoluteFillObject}
+facing="back"
+barcodeScannerSettings={{
+barcodeTypes: [
+"ean13",
+"ean8",
+"upc_a",
+"upc_e",
+"code128",
+"qr",
+],
+}}
+onBarcodeScanned={({ data }) => onScan(data)}
+/>
+
+  <View style={styles.overlay}>
+    <TouchableOpacity
+      style={styles.closeButton}
+      onPress={onCancel}
+    >
+      <Ionicons name="close" size={26} color="#FFFFFF" />
+    </TouchableOpacity>
+
+    <View style={styles.scanFrame} />
+
+    <Text style={styles.instruction}>
+      Position the product barcode or QR code
+      inside the frame.
+    </Text>
+  </View>
+</View>
+
+);
+}
+
+const styles = StyleSheet.create({
+container: {
+flex: 1,
+backgroundColor: "#000000",
+},
+overlay: {
+flex: 1,
+alignItems: "center",
+justifyContent: "center",
+padding: 24,
+},
+closeButton: {
+position: "absolute",
+top: 50,
+right: 24,
+width: 44,
+height: 44,
+borderRadius: 22,
+backgroundColor: "rgba(0,0,0,0.55)",
+alignItems: "center",
+justifyContent: "center",
+},
+scanFrame: {
+width: 260,
+height: 180,
+borderWidth: 2,
+borderColor: "#FFFFFF",
+borderRadius: 18,
+backgroundColor: "transparent",
+},
+instruction: {
+color: "#FFFFFF",
+fontSize: 15,
+textAlign: "center",
+marginTop: 28,
+lineHeight: 23,
+},
+center: {
+flex: 1,
+alignItems: "center",
+justifyContent: "center",
+padding: 28,
+backgroundColor: C.background,
+gap: 14,
+},
+title: {
+color: C.text,
+fontSize: 20,
+fontWeight: "700",
+textAlign: "center",
+},
+text: {
+color: C.muted,
+fontSize: 14,
+textAlign: "center",
+},
+button: {
+paddingHorizontal: 22,
+paddingVertical: 13,
+borderRadius: 12,
+backgroundColor: C.text,
+},
+buttonText: {
+color: C.background,
+fontWeight: "700",
+},
+cancelText: {
+color: C.text,
+padding: 12,
+},
+});
