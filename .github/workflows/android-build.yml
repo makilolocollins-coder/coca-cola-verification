@@ -1,5 +1,8 @@
 name: VERITY Android APK Build
 
+
+name: VERITY Android APK Build
+
 on:
   workflow_dispatch:
 
@@ -14,64 +17,35 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
-        with:
-          persist-credentials: true
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: mobile/package-lock.json
 
       - name: Verify scanner files exist
         run: |
           echo "Current commit:"
           git rev-parse HEAD
-
-          echo "Checking mobile/app directory:"
-          ls -la mobile/app/
-
-          echo "Checking scanner screen:"
+          echo "Checking scanner file:"
           if [ -f mobile/app/scanner-screen.tsx ]; then
             echo "SUCCESS: scanner-screen.tsx exists."
           else
             echo "ERROR: scanner-screen.tsx is missing."
+            find mobile/app -maxdepth 2 -type f
             exit 1
           fi
-
           echo "Checking screens.tsx:"
           if [ -f mobile/app/screens.tsx ]; then
-            echo "SUCCESS: screens.tsx exists."
+            grep -n "scanner-screen" mobile/app/screens.tsx
           else
             echo "ERROR: screens.tsx is missing."
             exit 1
           fi
 
-          echo "Checking scanner import:"
-          grep -n "scanner-screen" mobile/app/screens.tsx
-
-      - name: Regenerate package lock file
-        working-directory: mobile
-        run: npm install --package-lock-only
-
-      - name: Verify clean dependency installation
+      - name: Install dependencies
         working-directory: mobile
         run: npm ci
-
-      - name: Commit updated package lock file
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          git add mobile/package-lock.json
-
-          if ! git diff --cached --quiet; then
-            git commit -m "Fix mobile dependency lock file"
-            git push
-          else
-            echo "No package lock changes to commit."
-          fi
 
       - name: Check Expo configuration
         working-directory: mobile
@@ -81,29 +55,22 @@ jobs:
         working-directory: mobile
         run: npx expo-doctor
 
-      - name: Check EAS CLI
-        working-directory: mobile
-        run: npx eas-cli --version
-
       - name: Verify scanner files before EAS upload
         working-directory: mobile
         run: |
           echo "Working directory:"
           pwd
-
-          echo "Scanner screen details:"
+          ls -la app/
+          echo "Scanner screen:"
           ls -l app/scanner-screen.tsx
-
           echo "Screen imports:"
           sed -n '1,40p' app/screens.tsx
-
-          echo "Ignore files:"
-          for file in .easignore .gitignore ../.gitignore; do
-            if [ -f "$file" ]; then
-              echo "----- $file -----"
-              cat "$file"
-            fi
-          done
+          echo "EAS ignore file:"
+          if [ -f .easignore ]; then
+            cat .easignore
+          else
+            echo "No .easignore file found."
+          fi
 
       - name: Build Android APK
         working-directory: mobile
