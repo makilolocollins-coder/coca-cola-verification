@@ -17,6 +17,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
 
       - name: Install dependencies
         working-directory: mobile
@@ -25,6 +27,10 @@ jobs:
       - name: Check Expo configuration
         working-directory: mobile
         run: npx expo config --json
+
+      - name: Run Expo Doctor
+        working-directory: mobile
+        run: npx expo-doctor
 
       - name: Set up Expo and EAS
         working-directory: mobile
