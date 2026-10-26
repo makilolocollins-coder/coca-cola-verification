@@ -20,9 +20,7 @@ InfoCard,
 } from "./components";
 
 import ScannerScreen from "./scanner-screen";
-import ResultsScreen, {
-ProductInfo,
-} from "./results-screen";
+import ResultsScreen, { ProductInfo } from "./results-screen";
 import { detectLocation, ScanLocation } from "./location-service";
 import { verifyBottle } from "../verification";
 
@@ -56,7 +54,6 @@ const [product, setProduct] = useState<Product | null>(null);
 const [barcode, setBarcode] = useState("");
 const [message, setMessage] = useState("");
 const [verificationMessage, setVerificationMessage] = useState("");
-
 const [scanLocation, setScanLocation] =
 useState<ScanLocation | null>(null);
 
@@ -92,9 +89,11 @@ try {
 };
 
 const lookupProduct = async (code: string) => {
-if (!code.trim() || loading) return;
+const scannedCode = code.trim();
 
-setBarcode(code.trim());
+if (!scannedCode || loading) return;
+
+setBarcode(scannedCode);
 setScannerOpen(false);
 setLoading(true);
 setProduct(null);
@@ -104,7 +103,7 @@ setVerificationMessage("");
 try {
   const response = await fetch(
     `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(
-      code.trim()
+      scannedCode
     )}.json`
   );
 
@@ -143,6 +142,8 @@ Alert.alert(
 return;
 }
 
+if (verifying) return;
+
 setVerifying(true);
 setVerificationMessage("");
 
@@ -159,12 +160,15 @@ try {
     scan_place: scanLocation.locationText,
   });
 
-  setVerificationMessage(
-    typeof result.note === "string"
+  const responseMessage =
+    typeof result?.note === "string"
       ? result.note
-      : typeof result.message === "string"
-        ? result.message
-        : JSON.stringify(result)
+      : typeof result?.message === "string"
+      ? result.message
+      : JSON.stringify(result);
+
+  setVerificationMessage(
+    responseMessage || "The server returned an empty result."
   );
 
   onVerify(barcode);
@@ -182,25 +186,23 @@ try {
 
 const locationCard = () => (
 <View style={styles.locationCard}>
-<Ionicons
-name="location-outline"
-size={22}
-color={C.text}
-/>
-<View style={{ flex: 1 }}>
-<Text style={styles.locationTitle}>
-Scan location
-</Text>
-<Text style={styles.locationPlace}>
-{scanLocation?.placeName || "Location unavailable"}
-</Text>
-<Text style={styles.locationDetails}>
-{scanLocation
-? scanLocation.locationText
-: "Coordinates unavailable"}
-</Text>
+<Ionicons name="location-outline" size={22} color={C.text} />
+
+  <View style={{ flex: 1 }}>
+    <Text style={styles.locationTitle}>Scan location</Text>
+
+    <Text style={styles.locationPlace}>
+      {scanLocation?.placeName || "Location unavailable"}
+    </Text>
+
+    <Text style={styles.locationDetails}>
+      {scanLocation
+        ? scanLocation.locationText
+        : "Coordinates unavailable"}
+    </Text>
+  </View>
 </View>
-</View>
+
 );
 
 // CAMERA SCREEN
@@ -227,64 +229,67 @@ categories: product.categories,
 : null;
 
 return (
-  <ScrollView
-    style={styles.page}
-    contentContainerStyle={styles.content}
-  >
-    {locationCard()}
-
-    {loading ? (
-      <View style={styles.loading}>
-        <ActivityIndicator size="large" color={C.text} />
-        <Text style={styles.description}>
-          Retrieving product information...
-        </Text>
-      </View>
-    ) : null}
-
-    {product?.image_front_url ? (
-      <Image
-        source={{ uri: product.image_front_url }}
-        style={styles.productImage}
-        resizeMode="contain"
-      />
-    ) : null}
-
-    <ResultsScreen
-      product={resultProduct}
-      barcode={barcode}
-      loading={verifying}
-      message={message}
-      onScanAgain={openScanner}
-      onVerify={handleVerify}
-    />
-
-    {verifying ? (
-      <ActivityIndicator
-        style={{ marginTop: 16 }}
-        size="small"
-        color={C.text}
-      />
-    ) : null}
-
-    {verificationMessage ? (
-      <View style={styles.verificationCard}>
-        <Text style={styles.cardTitle}>
-          Verification response
-        </Text>
-        <Text style={styles.description}>
-          {verificationMessage}
-        </Text>
-      </View>
-    ) : null}
-
-    <TouchableOpacity
-      style={styles.secondaryButton}
-      onPress={reset}
+  <View style={styles.page}>
+    <ScrollView
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
     >
-      <Text style={styles.secondaryText}>Back</Text>
-    </TouchableOpacity>
-  </ScrollView>
+      {locationCard()}
+
+      {loading ? (
+        <View style={styles.loading}>
+          <ActivityIndicator size="large" color={C.text} />
+          <Text style={styles.description}>
+            Retrieving product information...
+          </Text>
+        </View>
+      ) : null}
+
+      {product?.image_front_url ? (
+        <Image
+          source={{ uri: product.image_front_url }}
+          style={styles.productImage}
+          resizeMode="contain"
+        />
+      ) : null}
+
+      <ResultsScreen
+        product={resultProduct}
+        barcode={barcode}
+        loading={verifying}
+        message={message}
+        onScanAgain={openScanner}
+        onVerify={handleVerify}
+      />
+
+      {verifying ? (
+        <ActivityIndicator
+          style={{ marginTop: 16 }}
+          size="small"
+          color={C.text}
+        />
+      ) : null}
+
+      {verificationMessage ? (
+        <View style={styles.verificationCard}>
+          <Text style={styles.cardTitle}>
+            Verification response
+          </Text>
+
+          <Text style={styles.description}>
+            {verificationMessage}
+          </Text>
+        </View>
+      ) : null}
+
+      <TouchableOpacity
+        style={styles.secondaryButton}
+        onPress={reset}
+      >
+        <Text style={styles.secondaryText}>Back</Text>
+      </TouchableOpacity>
+    </ScrollView>
+  </View>
 );
 
 }
@@ -296,14 +301,14 @@ return (
 style={styles.page}
 contentContainerStyle={styles.content}
 >
-<Text style={styles.eyebrow}>
-VERITY / PRODUCT CHECK
-</Text>
-<Text style={styles.title}>Scan a product.</Text>
-<Text style={styles.description}>
-Scan a food product barcode to retrieve available
-information and associate the scan with its location.
-</Text>
+<Text style={styles.eyebrow}>VERITY / PRODUCT CHECK</Text>
+
+    <Text style={styles.title}>Scan a product.</Text>
+
+    <Text style={styles.description}>
+      Scan a food product barcode to retrieve available information
+      and associate the scan with its location.
+    </Text>
 
     <View style={styles.card}>
       <MaterialCommunityIcons
@@ -311,6 +316,7 @@ information and associate the scan with its location.
         size={44}
         color={C.text}
       />
+
       <Text style={styles.cardTitle}>Camera scanner</Text>
 
       {scanLocation ? locationCard() : null}
@@ -363,9 +369,11 @@ contentContainerStyle={styles.content}
     ) : (
       <View style={styles.card}>
         <Text style={styles.cardTitle}>No scans yet</Text>
+
         <Text style={styles.description}>
           Start scanning products to review their available details.
         </Text>
+
         <TouchableOpacity
           style={styles.primaryButton}
           onPress={() => onNavigate("scan")}
@@ -390,13 +398,15 @@ contentContainerStyle={styles.content}
 >
 <Text style={styles.eyebrow}>YOUR ACCOUNT</Text>
 <Text style={styles.title}>Profile</Text>
-<InfoCard
-icon="shield-checkmark-outline"
-title="VERITY"
-text="Review available product records and verification results. Always inspect the physical packaging."
-/>
-</ScrollView>
+
+    <InfoCard
+      icon="shield-checkmark-outline"
+      title="VERITY"
+      text="Review available product records and verification results. Always inspect the physical packaging."
+    />
+  </ScrollView>
 );
+
 }
 
 // HOME SCREEN
@@ -408,10 +418,12 @@ contentContainerStyle={styles.content}
 <Text style={styles.eyebrow}>
 VERITY / PRODUCT INTELLIGENCE
 </Text>
-<Text style={styles.title}>Look closer.</Text>
-<Text style={styles.description}>
-Scan food products and review available information before you buy.
-</Text>
+
+  <Text style={styles.title}>Look closer.</Text>
+
+  <Text style={styles.description}>
+    Scan food products and review available information before you buy.
+  </Text>
 
   <View style={styles.hero}>
     <MaterialCommunityIcons
@@ -419,13 +431,16 @@ Scan food products and review available information before you buy.
       size={48}
       color={C.text}
     />
+
     <Text style={styles.heroTitle}>
       Know what you're checking.
     </Text>
+
     <Text style={styles.description}>
       Scan a barcode, review product details, and associate the scan
       with a location.
     </Text>
+
     <TouchableOpacity
       style={styles.primaryButton}
       onPress={() => onNavigate("scan")}
@@ -443,16 +458,19 @@ Scan food products and review available information before you buy.
     title="01. Scan"
     text="Capture the product barcode."
   />
+
   <InfoCard
     icon="search-outline"
     title="02. Review"
     text="Compare available product details with the packaging."
   />
+
   <InfoCard
     icon="location-outline"
     title="03. Locate"
     text="Record GPS coordinates and a readable location where available."
   />
+
   <InfoCard
     icon="shield-checkmark-outline"
     title="04. Verify carefully"
