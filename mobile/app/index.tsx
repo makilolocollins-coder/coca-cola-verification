@@ -1,3 +1,4 @@
+
 import React, { useState } from "react";
 import {
   SafeAreaView,
@@ -23,7 +24,6 @@ import {
   Heading,
   ActionCard,
   ScanRow,
-  styles as shared,
 } from "./components";
 
 const sampleScans: ScanRecord[] = [
@@ -70,11 +70,80 @@ export default function App() {
 
   const goTo = (next: ScreenName) => setScreen(next);
 
-  const handleVerify = (code: string) => {
-    Alert.alert(
-      "Verification not connected",
-      `Code entered: ${code}\n\nVERITY has not checked this code against its trusted database. No authenticity result has been generated.`
-    );
+  // Looks up a barcode received from the camera scanner.
+  const handleVerify = async (code: string) => {
+    const barcode = code.trim();
+
+    if (!barcode) {
+      Alert.alert(
+        "No barcode detected",
+        "Please scan a product barcode and try again."
+      );
+      return;
+    }
+
+    try {
+      const fields = [
+        "code",
+        "product_name",
+        "brands",
+        "quantity",
+        "categories",
+        "ingredients_text",
+        "image_front_url",
+      ].join(",");
+
+      const url =
+        `https://world.openfoodfacts.org/api/v2/product/` +
+        `${encodeURIComponent(barcode)}.json?fields=${fields}`;
+
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.status !== 1 || !data.product) {
+        Alert.alert(
+          "Product not found",
+          "No product matched this barcode. Try scanning it again."
+        );
+        return;
+      }
+
+      const product = data.product;
+      const name = product.product_name || "Product name unavailable";
+      const brand = product.brands || "Brand unavailable";
+      const quantity = product.quantity || "Not listed";
+      const category = product.categories || "Not listed";
+      const ingredients = product.ingredients_text || "Not listed";
+
+      Alert.alert(
+        name,
+        [
+          `Brand: ${brand}`,
+          `Barcode: ${product.code || barcode}`,
+          `Quantity: ${quantity}`,
+          `Category: ${category}`,
+          `Ingredients: ${ingredients}`,
+        ].join("\n\n"),
+        [{ text: "Done" }]
+      );
+    } catch (error) {
+      console.error("VERITY product lookup failed:", error);
+
+      Alert.alert(
+        "Lookup unavailable",
+        "Unable to retrieve product details. Check your internet connection and try again."
+      );
+    }
   };
 
   const openSampleScan = (item: ScanRecord) => {
@@ -87,7 +156,6 @@ export default function App() {
 
   const renderHome = () => (
     <>
-      {/* Brand header */}
       <View style={homeStyles.brandRow}>
         <View style={homeStyles.brandMark}>
           <MaterialCommunityIcons
@@ -121,7 +189,6 @@ export default function App() {
         </TouchableOpacity>
       </View>
 
-      {/* Hero */}
       <View style={homeStyles.hero}>
         <View style={homeStyles.heroCopy}>
           <Text style={homeStyles.heroTitle}>Facts first.</Text>
@@ -137,7 +204,6 @@ export default function App() {
         />
       </View>
 
-      {/* Main verification action */}
       <TouchableOpacity
         style={homeStyles.mainScan}
         activeOpacity={0.85}
@@ -164,7 +230,6 @@ export default function App() {
         </View>
       </TouchableOpacity>
 
-      {/* Five distinct homepage sections */}
       <Heading title="EXPLORE VERITY" />
 
       <View style={{ paddingHorizontal: 20, marginBottom: 22 }}>
@@ -192,7 +257,6 @@ export default function App() {
         ))}
       </View>
 
-      {/* Product categories */}
       <Heading
         title="PRODUCT CATEGORIES"
         action="Browse registry"
@@ -231,7 +295,6 @@ export default function App() {
         ))}
       </ScrollView>
 
-      {/* Recent activity */}
       <Heading
         title="RECENT ACTIVITY"
         action="View history"
@@ -251,7 +314,6 @@ export default function App() {
         </Text>
       </View>
 
-      {/* Trust statement */}
       <View style={homeStyles.mission}>
         <MaterialCommunityIcons
           name="shield-check-outline"
@@ -269,7 +331,6 @@ export default function App() {
         </View>
       </View>
 
-      {/* Separate company access */}
       <TouchableOpacity
         style={homeStyles.companyLink}
         onPress={() => goTo("Company")}
@@ -280,7 +341,9 @@ export default function App() {
           color={C.goldLight}
         />
         <View style={{ flex: 1 }}>
-          <Text style={homeStyles.companyTitle}>For food and FMCG companies</Text>
+          <Text style={homeStyles.companyTitle}>
+            For food and FMCG companies
+          </Text>
           <Text style={homeStyles.companySubtitle}>
             Open the secure company portal
           </Text>
@@ -324,7 +387,6 @@ export default function App() {
         <View style={{ height: 24 }} />
       </ScrollView>
 
-      {/* Bottom navigation */}
       <View style={homeStyles.bottomNav}>
         {nav.map((item) => {
           const active = screen === item.name;
