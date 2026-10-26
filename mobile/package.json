@@ -1,5 +1,4 @@
 
-
 {
   "name": "product-verification-mobile",
   "version": "1.0.0",
@@ -10,6 +9,7 @@
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
+    "@supabase/supabase-js": "^2.57.0",
     "expo": "~54.0.0",
     "expo-router": "~6.0.0",
     "expo-camera": "~17.0.0",
