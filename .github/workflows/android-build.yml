@@ -1,8 +1,5 @@
 name: VERITY Android APK Build
 
-
-name: VERITY Android APK Build
-
 on:
   workflow_dispatch:
 
