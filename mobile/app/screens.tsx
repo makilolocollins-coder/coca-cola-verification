@@ -1,730 +1,543 @@
-import React, { useMemo, useState } from "react";
+
+import React, { useRef, useState } from "react";
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   ScrollView,
   Alert,
   Image,
+  ActivityIndicator,
+  StyleSheet,
 } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { CameraView, useCameraPermissions } from "expo-camera";
+
 import {
   C,
-  photos,
-  categories,
   ScanRecord,
   ScreenName,
-  ActionCard,
   ScanRow,
-  ScreenHeader,
   InfoCard,
-  Heading,
-  styles,
 } from "./components";
 
 type Props = {
   screen: ScreenName;
-  scans: ScanRecord[];
-  goTo: (screen: ScreenName) => void;
+  records: ScanRecord[];
+  onNavigate: (screen: ScreenName) => void;
   onVerify: (code: string) => void;
 };
 
-const registryProducts = [
-  {
-    name: "Minute Maid Orange Juice",
-    brand: "Minute Maid",
-    category: "Beverages",
-    image: photos.juice,
-  },
-  {
-    name: "Royal Stallion Parboiled Rice",
-    brand: "Royal Stallion",
-    category: "Grains & Staples",
-    image: photos.rice,
-  },
-  {
-    name: "Packaged Cooking Oil",
-    brand: "Sample catalogue entry",
-    category: "Oils & Sauces",
-    image: photos.oils,
-  },
-  {
-    name: "Packaged Snack",
-    brand: "Sample catalogue entry",
-    category: "Snacks & Packaged",
-    image: photos.snacks,
-  },
-];
+type Product = {
+  product_name?: string;
+  brands?: string;
+  quantity?: string;
+  image_front_url?: string;
+  categories?: string;
+};
 
-function Field({
-  label,
-  value,
-  onChangeText,
-  placeholder,
-  multiline = false,
-}: {
-  label: string;
-  value: string;
-  onChangeText: (value: string) => void;
-  placeholder: string;
-  multiline?: boolean;
-}) {
-  return (
-    <View style={{ marginBottom: 16 }}>
-      <Text style={formStyles.label}>{label}</Text>
-      <TextInput
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor="#8A8E8C"
-        multiline={multiline}
-        textAlignVertical={multiline ? "top" : "center"}
-        style={[formStyles.input, multiline && formStyles.multiline]}
-      />
-    </View>
-  );
-}
+export default function Screens({
+  screen,
+  records,
+  onNavigate,
+}: Props) {
+  const [permission, requestPermission] = useCameraPermissions();
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [product, setProduct] = useState<Product | null>(null);
+  const [barcode, setBarcode] = useState("");
+  const [message, setMessage] = useState("");
+  const scanLock = useRef(false);
 
-function PrimaryButton({
-  title,
-  onPress,
-}: {
-  title: string;
-  onPress: () => void;
-}) {
-  return (
-    <TouchableOpacity
-      style={formStyles.primaryButton}
-      activeOpacity={0.8}
-      onPress={onPress}
-    >
-      <Text style={formStyles.primaryButtonText}>{title}</Text>
-      <Ionicons name="arrow-forward" size={18} color={C.navy} />
+  const reset = () => {
+    setScannerOpen(false);
+    setLoading(false);
+    setProduct(null);
+    setBarcode("");
+    setMessage("");
+    scanLock.current = false;
+  };
+
+  const openScanner = async () => {
+    reset();
+
+    if (!permission?.granted) {
+      const result = await requestPermission();
+
+      if (!result.granted) {
+        Alert.alert(
+          "Camera permission required",
+          "Allow camera access to scan product barcodes."
+        );
+        return;
+      }
+    }
+
+    setScannerOpen(true);
+  };
+
+  const lookupProduct = async (code: string) => {
+    if (scanLock.current) return;
+
+    scanLock.current = true;
+    setBarcode(code);
+    setScannerOpen(false);
+    setLoading(true);
+    setProduct(null);
+    setMessage("");
+
+    try {
+      const response = await fetch(
+        `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json`
+      );
+
+      if (!response.ok) {
+        throw new Error("Lookup failed");
+      }
+
+      const result = await response.json();
+
+      if (result.status === 1 && result.product) {
+        setProduct(result.product);
+        setMessage(
+          "Product information found. Compare these details with the packaging. This does not prove authenticity."
+        );
+      } else {
+        setMessage(
+          "No matching product record found. This does not mean the product is counterfeit."
+        );
+      }
+    } catch {
+      setMessage(
+        "Could not retrieve product information. Check your internet connection and try again."
+      );
+    } finally {
+      setLoading(false);
+      scanLock.current = false;
+    }
+  };
+
+  const PrimaryButton = ({
+    title,
+    onPress,
+  }: {
+    title: string;
+    onPress: () => void;
+  }) => (
+    <TouchableOpacity style={styles.primaryButton} onPress={onPress}>
+      <Text style={styles.primaryButtonText}>{title}</Text>
     </TouchableOpacity>
   );
-}
 
-export default function AppScreen({
-  screen,
-  scans,
-  goTo,
-  onVerify,
-}: Props) {
-  const [code, setCode] = useState("");
-  const [search, setSearch] = useState("");
-  const [reportType, setReportType] = useState("Suspected counterfeit");
-  const [reportProduct, setReportProduct] = useState("");
-  const [reportBatch, setReportBatch] = useState("");
-  const [reportDetails, setReportDetails] = useState("");
-  const [companyEmail, setCompanyEmail] = useState("");
-  const [companyMessage, setCompanyMessage] = useState("");
-
-  const filteredProducts = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return registryProducts;
-    return registryProducts.filter((p) =>
-      `${p.name} ${p.brand} ${p.category}`.toLowerCase().includes(q)
-    );
-  }, [search]);
-
-  if (screen === "Verify") {
+  if (scannerOpen) {
     return (
-      <View>
-        <ScreenHeader
-          eyebrow="PRODUCT AUTHENTICATION"
-          title="Verify a product."
-          description="Enter a product, serial or batch code. A real authenticity decision requires a trusted registry response."
-        />
+      <View style={styles.page}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={reset}>
+            <Ionicons name="arrow-back" size={26} color={C.text} />
+          </TouchableOpacity>
+          <Text style={styles.title}>Scan product</Text>
+          <View style={{ width: 26 }} />
+        </View>
 
-        <View style={formStyles.panel}>
-          <View style={formStyles.panelIcon}>
-            <MaterialCommunityIcons
-              name="shield-search-outline"
-              size={32}
-              color={C.goldLight}
-            />
+        <Text style={styles.description}>
+          Place the barcode inside the camera frame.
+        </Text>
+
+        <View style={styles.cameraContainer}>
+          <CameraView
+            style={StyleSheet.absoluteFillObject}
+            facing="back"
+            barcodeScannerSettings={{
+              barcodeTypes: [
+                "ean13",
+                "ean8",
+                "upc_a",
+                "upc_e",
+                "code128",
+                "code39",
+                "qr",
+              ],
+            }}
+            onBarcodeScanned={({ data }) => {
+              if (data && !scanLock.current) {
+                void lookupProduct(data);
+              }
+            }}
+          />
+          <View pointerEvents="none" style={styles.scanFrame}>
+            <View style={[styles.corner, styles.topLeft]} />
+            <View style={[styles.corner, styles.topRight]} />
+            <View style={[styles.corner, styles.bottomLeft]} />
+            <View style={[styles.corner, styles.bottomRight]} />
           </View>
-          <Text style={formStyles.panelTitle}>Identify your product</Text>
-          <Text style={formStyles.panelText}>
-            Camera scanning and live backend verification will be connected in a later step.
+        </View>
+
+        <Text style={styles.hint}>
+          Hold your phone steady and make sure the barcode is visible.
+        </Text>
+
+        <PrimaryButton title="Cancel scan" onPress={reset} />
+      </View>
+    );
+  }
+
+  if (loading || barcode || message) {
+    return (
+      <ScrollView style={styles.page} contentContainerStyle={styles.content}>
+        <Text style={styles.eyebrow}>PRODUCT LOOKUP</Text>
+        <Text style={styles.title}>Scan results</Text>
+
+        {barcode ? (
+          <Text style={styles.description}>Barcode: {barcode}</Text>
+        ) : null}
+
+        {loading ? (
+          <View style={styles.loading}>
+            <ActivityIndicator size="large" color={C.text} />
+            <Text style={styles.description}>
+              Retrieving product information...
+            </Text>
+          </View>
+        ) : null}
+
+        {product?.image_front_url ? (
+          <Image
+            source={{ uri: product.image_front_url }}
+            style={styles.productImage}
+            resizeMode="contain"
+          />
+        ) : null}
+
+        {product ? (
+          <View style={styles.card}>
+            <Text style={styles.productName}>
+              {product.product_name || "Product name unavailable"}
+            </Text>
+            <Text style={styles.description}>
+              Brand: {product.brands || "Not listed"}
+            </Text>
+
+            {product.quantity ? (
+              <Text style={styles.detail}>
+                Package size: {product.quantity}
+              </Text>
+            ) : null}
+
+            {product.categories ? (
+              <Text style={styles.detail}>
+                Category: {product.categories}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+
+        {!loading && message ? (
+          <InfoCard
+            icon="information-circle-outline"
+            title="Lookup information"
+            text={message}
+          />
+        ) : null}
+
+        <InfoCard
+          icon="shield-checkmark-outline"
+          title="Important"
+          text="A barcode lookup cannot independently establish whether the physical product is genuine, tampered with, or counterfeit."
+        />
+
+        <PrimaryButton title="Scan another product" onPress={openScanner} />
+        <TouchableOpacity style={styles.secondaryButton} onPress={reset}>
+          <Text style={styles.secondaryText}>Back</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    );
+  }
+
+  if (screen === "scan") {
+    return (
+      <ScrollView style={styles.page} contentContainerStyle={styles.content}>
+        <Text style={styles.eyebrow}>VERITY / PRODUCT CHECK</Text>
+        <Text style={styles.title}>Scan a product.</Text>
+        <Text style={styles.description}>
+          Scan food product barcodes and retrieve available product information.
+        </Text>
+
+        <View style={styles.card}>
+          <MaterialCommunityIcons
+            name="barcode-scan"
+            size={44}
+            color={C.text}
+          />
+          <Text style={styles.cardTitle}>Camera scanner</Text>
+          <Text style={styles.description}>
+            Point your camera at the product barcode. No manual entry needed.
           </Text>
-          <Field
-            label="BARCODE / SERIAL / BATCH CODE"
-            value={code}
-            onChangeText={setCode}
-            placeholder="Enter the code printed on packaging"
-          />
-          <PrimaryButton
-            title="Check code"
-            onPress={() => {
-              if (!code.trim()) {
-                Alert.alert("Code required", "Enter a product code first.");
-                return;
-              }
-              onVerify(code.trim());
-            }}
-          />
+          <PrimaryButton title="Open camera" onPress={openScanner} />
         </View>
 
-        <Text style={formStyles.sectionLabel}>OTHER WAYS TO IDENTIFY</Text>
-        <ActionCard
-          icon="barcode"
-          title="Scan barcode"
-          subtitle="Use the phone camera"
-          onPress={() =>
-            Alert.alert(
-              "Barcode scanner",
-              "Camera scanning is not connected yet."
-            )
-          }
-        />
-        <ActionCard
-          icon="qrcode-scan"
-          title="Scan QR code"
-          subtitle="Read the product's QR code"
-          onPress={() =>
-            Alert.alert("QR scanner", "QR verification is not connected yet.")
-          }
-        />
-        <ActionCard
-          icon="camera-outline"
-          title="Photo check"
-          subtitle="Inspect a product label or packaging"
-          onPress={() =>
-            Alert.alert(
-              "Photo check",
-              "Photo capture and image analysis are not connected yet."
-            )
-          }
-        />
         <InfoCard
-          icon="shield-alert-outline"
-          title="A code is not proof of authenticity"
-          text="Counterfeit products can copy legitimate barcodes. VERITY must check trusted product and batch records before giving an authenticity result."
+          icon="information-circle-outline"
+          title="Product identification"
+          text="Product records may not exist for every barcode. A successful lookup is not proof of authenticity."
         />
-      </View>
+      </ScrollView>
     );
   }
 
-  if (screen === "History") {
+  if (screen === "history") {
     return (
-      <View>
-        <ScreenHeader
-          eyebrow="YOUR ACTIVITY"
-          title="Scan history."
-          description="Review product checks recorded on this device. Live account history will require database integration."
-        />
-        <View style={formStyles.darkList}>
-          {scans.map((item) => (
-            <ScanRow
-              key={item.id}
-              item={item}
-              onPress={() =>
-                Alert.alert(
-                  item.name,
-                  `${item.status}\n\n${
-                    item.status === "VERIFIED"
-                      ? "This is demonstration data, not a live authenticity decision."
-                      : "This record is illustrative. It is not a confirmed counterfeit finding."
-                  }`
-                )
-              }
+      <ScrollView style={styles.page} contentContainerStyle={styles.content}>
+        <Text style={styles.eyebrow}>YOUR ACTIVITY</Text>
+        <Text style={styles.title}>Scan history</Text>
+
+        {records.length > 0 ? (
+          records.map((record, index) => (
+            <ScanRow key={index} record={record} />
+          ))
+        ) : (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>No scans yet</Text>
+            <Text style={styles.description}>
+              Start scanning products to begin checking their available details.
+            </Text>
+            <PrimaryButton
+              title="Scan a product"
+              onPress={() => onNavigate("scan")}
             />
-          ))}
-        </View>
-        <InfoCard
-          icon="database-outline"
-          title="Sample history"
-          text="These entries are currently demonstration records. They will be replaced with real scan history after Supabase access and user authentication are configured."
-        />
-      </View>
-    );
-  }
-
-  if (screen === "Report") {
-    return (
-      <View>
-        <ScreenHeader
-          eyebrow="CONSUMER REPORTS"
-          title="Report a product."
-          description="Help flag products that may require investigation. A report is an allegation, not proof of counterfeiting."
-        />
-        <View style={formStyles.panel}>
-          <Text style={formStyles.label}>TYPE OF REPORT</Text>
-          {[
-            "Suspected counterfeit",
-            "Misleading label",
-            "Damaged packaging",
-            "Expired product",
-            "Other concern",
-          ].map((type) => (
-            <TouchableOpacity
-              key={type}
-              style={formStyles.choiceRow}
-              onPress={() => setReportType(type)}
-            >
-              <Ionicons
-                name={
-                  reportType === type
-                    ? "radio-button-on"
-                    : "radio-button-off"
-                }
-                size={20}
-                color={reportType === type ? C.gold : C.muted}
-              />
-              <Text style={formStyles.choiceText}>{type}</Text>
-            </TouchableOpacity>
-          ))}
-
-          <Field
-            label="PRODUCT NAME OR BRAND"
-            value={reportProduct}
-            onChangeText={setReportProduct}
-            placeholder="Enter product name"
-          />
-          <Field
-            label="BATCH / LOT NUMBER (OPTIONAL)"
-            value={reportBatch}
-            onChangeText={setReportBatch}
-            placeholder="Enter batch number if available"
-          />
-          <Field
-            label="WHAT DID YOU NOTICE?"
-            value={reportDetails}
-            onChangeText={setReportDetails}
-            placeholder="Describe the packaging, label or other concern"
-            multiline
-          />
-
-          <TouchableOpacity
-            style={formStyles.secondaryButton}
-            onPress={() =>
-              Alert.alert(
-                "Photo attachment",
-                "Photo upload will be enabled when the reporting backend is connected."
-              )
-            }
-          >
-            <Ionicons name="camera-outline" size={20} color={C.ink} />
-            <Text style={formStyles.secondaryButtonText}>
-              Attach product photos
-            </Text>
-          </TouchableOpacity>
-
-          <PrimaryButton
-            title="Review report"
-            onPress={() => {
-              if (!reportProduct.trim() || !reportDetails.trim()) {
-                Alert.alert(
-                  "More information needed",
-                  "Enter the product name and describe your concern."
-                );
-                return;
-              }
-              Alert.alert(
-                "Report draft prepared",
-                `Type: ${reportType}\nProduct: ${reportProduct.trim()}\nBatch: ${
-                  reportBatch.trim() || "Not provided"
-                }\n\nThis is only a local draft. It has not been submitted or saved.`,
-                [{ text: "OK" }]
-              );
-            }}
-          />
-        </View>
-      </View>
-    );
-  }
-
-  if (screen === "Registry") {
-    return (
-      <View>
-        <ScreenHeader
-          eyebrow="TRUSTED PRODUCT CATALOGUE"
-          title="Product registry."
-          description="Search the catalogue for product information. The entries shown here are examples, not confirmed registrations."
-        />
-        <View style={formStyles.searchBox}>
-          <Ionicons name="search-outline" size={20} color={C.muted} />
-          <TextInput
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Search products, brands or categories"
-            placeholderTextColor={C.muted}
-            style={formStyles.searchInput}
-          />
-          {search.length > 0 && (
-            <TouchableOpacity onPress={() => setSearch("")}>
-              <Ionicons name="close-circle" size={19} color={C.muted} />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 8, paddingBottom: 18 }}
-        >
-          {categories.map((cat) => (
-            <TouchableOpacity
-              key={cat.name}
-              style={formStyles.categoryPill}
-              onPress={() => setSearch(cat.name)}
-            >
-              <Text style={formStyles.categoryPillText}>{cat.name}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        {filteredProducts.map((product) => (
-          <TouchableOpacity
-            key={product.name}
-            style={formStyles.productCard}
-            onPress={() =>
-              Alert.alert(
-                product.name,
-                `Brand: ${product.brand}\nCategory: ${product.category}\n\nThis is a demonstration catalogue entry. Its registration has not been confirmed.`
-              )
-            }
-          >
-            <Image source={{ uri: product.image }} style={formStyles.productImage} />
-            <View style={{ flex: 1 }}>
-              <Text style={formStyles.productName}>{product.name}</Text>
-              <Text style={formStyles.productMeta}>{product.brand}</Text>
-              <Text style={formStyles.productCategory}>{product.category}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={19} color={C.muted} />
-          </TouchableOpacity>
-        ))}
-
-        {filteredProducts.length === 0 && (
-          <View style={formStyles.emptyState}>
-            <Ionicons name="search-outline" size={30} color={C.muted} />
-            <Text style={formStyles.emptyTitle}>No matching examples</Text>
-            <Text style={formStyles.emptyText}>
-              Try another name or category. A live registry search has not yet been connected.
-            </Text>
           </View>
         )}
-      </View>
+      </ScrollView>
     );
   }
 
-  if (screen === "Company") {
+  if (screen === "profile") {
     return (
-      <View>
-        <ScreenHeader
-          eyebrow="VERITY BUSINESS"
-          title="Company portal."
-          description="A secure workspace for approved food and FMCG manufacturers, distributors and brand owners."
-        />
-        <View style={formStyles.panel}>
-          <View style={formStyles.panelIcon}>
-            <MaterialCommunityIcons
-              name="domain"
-              size={32}
-              color={C.goldLight}
-            />
-          </View>
-          <Text style={formStyles.panelTitle}>Authorized company access</Text>
-          <Text style={formStyles.panelText}>
-            Company accounts are created by VERITY administrators. Companies cannot approve their own registrations.
-          </Text>
-          <Field
-            label="WORK EMAIL"
-            value={companyEmail}
-            onChangeText={setCompanyEmail}
-            placeholder="name@company.com"
-          />
-          <Field
-            label="ACCESS REQUEST / MESSAGE (OPTIONAL)"
-            value={companyMessage}
-            onChangeText={setCompanyMessage}
-            placeholder="Company name and reason for access"
-            multiline
-          />
-          <PrimaryButton
-            title="Continue"
-            onPress={() => {
-              Alert.alert(
-                "Company access",
-                companyEmail.trim()
-                  ? "Company login is not connected yet. No account has been created. VERITY administrators will create authorized accounts."
-                  : "Enter your work email. Company login and access requests are not connected yet."
-              );
-            }}
-          />
-        </View>
-
-        <Text style={formStyles.sectionLabel}>COMPANY WORKSPACE WILL INCLUDE</Text>
-        <ActionCard
-          icon="package-variant"
-          title="Product and batch management"
-          subtitle="Maintain approved product records"
-          onPress={() =>
-            Alert.alert("Company workspace", "Available after secure sign-in is implemented.")
-          }
-        />
-        <ActionCard
-          icon="file-document-check-outline"
-          title="Product registration"
-          subtitle="Submit product details for VERITY review"
-          onPress={() =>
-            Alert.alert("Product registration", "Product submission is not connected yet.")
-          }
-        />
-        <ActionCard
-          icon="alert-circle-outline"
-          title="Consumer reports"
-          subtitle="Review reports assigned to your company"
-          onPress={() =>
-            Alert.alert("Consumer reports", "Company-specific report access is not connected yet.")
-          }
-        />
+      <ScrollView style={styles.page} contentContainerStyle={styles.content}>
+        <Text style={styles.eyebrow}>YOUR ACCOUNT</Text>
+        <Text style={styles.title}>Profile</Text>
         <InfoCard
-          icon="lock-check-outline"
-          title="Access is controlled by VERITY"
-          text="Company accounts, roles and permissions must be enforced through authenticated backend access and database policies."
+          icon="shield-checkmark-outline"
+          title="VERITY"
+          text="Identify products using available barcode records. Always inspect packaging and product details."
         />
-      </View>
-    );
-  }
-
-  if (screen === "Alerts") {
-    return (
-      <View>
-        <ScreenHeader
-          eyebrow="STAY INFORMED"
-          title="Your alerts."
-          description="Notifications about your product checks and reports will appear here once live alerts are connected."
-        />
-        <View style={formStyles.emptyState}>
-          <MaterialCommunityIcons
-            name="bell-outline"
-            size={36}
-            color={C.gold}
-          />
-          <Text style={formStyles.emptyTitle}>No live alerts yet</Text>
-          <Text style={formStyles.emptyText}>
-            The old sample alert has been removed so demonstration content is not mistaken for a real fraud report.
-          </Text>
-        </View>
-      </View>
-    );
-  }
-
-  if (screen === "Profile") {
-    return (
-      <View>
-        <ScreenHeader
-          eyebrow="YOUR VERITY ACCOUNT"
-          title="Your profile."
-          description="Account settings will become available after authentication is implemented."
-        />
-        <View style={formStyles.panel}>
-          <View style={formStyles.panelIcon}>
-            <Ionicons name="person-outline" size={32} color={C.goldLight} />
-          </View>
-          {[
-            ["Account details", "person-circle-outline"],
-            ["Scan preferences", "options-outline"],
-            ["Privacy and security", "lock-closed-outline"],
-            ["About VERITY", "information-circle-outline"],
-          ].map(([label, icon]) => (
-            <TouchableOpacity
-              key={label}
-              style={formStyles.settingRow}
-              onPress={() =>
-                Alert.alert(label, "This setting will be available after account functionality is connected.")
-              }
-            >
-              <Ionicons name={icon as any} size={21} color={C.ink} />
-              <Text style={formStyles.settingText}>{label}</Text>
-              <Ionicons name="chevron-forward" size={18} color={C.muted} />
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
+      </ScrollView>
     );
   }
 
   return (
-    <View>
-      <ScreenHeader
-        eyebrow="VERITY"
-        title="Welcome."
-        description="Choose a section from the home screen."
+    <ScrollView style={styles.page} contentContainerStyle={styles.content}>
+      <Text style={styles.eyebrow}>VERITY / PRODUCT INTELLIGENCE</Text>
+      <Text style={styles.title}>Look closer.</Text>
+      <Text style={styles.description}>
+        Scan food products and review available information before you buy.
+      </Text>
+
+      <View style={styles.hero}>
+        <MaterialCommunityIcons
+          name="barcode-scan"
+          size={48}
+          color={C.text}
+        />
+        <Text style={styles.heroTitle}>Know what you're checking.</Text>
+        <Text style={styles.description}>
+          Scan a barcode to retrieve the product name, brand and other available details.
+        </Text>
+        <PrimaryButton
+          title="Start scanning"
+          onPress={() => onNavigate("scan")}
+        />
+      </View>
+
+      <Text style={styles.sectionTitle}>How it works</Text>
+
+      <InfoCard
+        icon="scan-outline"
+        title="01. Scan"
+        text="Use your camera to capture the barcode."
       />
-      <PrimaryButton title="Return home" onPress={() => goTo("Home")} />
-    </View>
+      <InfoCard
+        icon="search-outline"
+        title="02. Review"
+        text="Compare available product details with the packaging."
+      />
+      <InfoCard
+        icon="shield-checkmark-outline"
+        title="03. Check carefully"
+        text="A barcode alone cannot confirm authenticity."
+      />
+    </ScrollView>
   );
 }
 
-const formStyles = {
-  panel: {
-    backgroundColor: C.white,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: C.line,
-    padding: 18,
-    marginBottom: 20,
+const styles = StyleSheet.create({
+  page: {
+    flex: 1,
+    backgroundColor: C.background,
   },
-  panelIcon: {
-    width: 58,
-    height: 58,
-    borderRadius: 17,
-    backgroundColor: C.navy,
-    alignItems: "center" as const,
-    justifyContent: "center" as const,
-    marginBottom: 15,
+  content: {
+    padding: 22,
+    paddingBottom: 40,
   },
-  panelTitle: {
-    color: C.ink,
-    fontSize: 18,
-    fontWeight: "700" as const,
-    marginBottom: 8,
-  },
-  panelText: {
+  eyebrow: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 2,
     color: C.muted,
-    fontSize: 12,
-    lineHeight: 19,
-    marginBottom: 20,
-  },
-  label: {
-    color: C.ink,
-    fontSize: 10,
-    fontWeight: "800" as const,
-    letterSpacing: 0.8,
-    marginBottom: 8,
-  },
-  input: {
-    minHeight: 49,
-    borderRadius: 11,
-    borderWidth: 1,
-    borderColor: C.line,
-    paddingHorizontal: 13,
-    color: C.ink,
-    fontSize: 13,
-    backgroundColor: "#FEFDFC",
-  },
-  multiline: {
-    minHeight: 100,
-    paddingTop: 13,
-  },
-  primaryButton: {
-    minHeight: 49,
-    borderRadius: 12,
-    backgroundColor: C.goldLight,
-    flexDirection: "row" as const,
-    alignItems: "center" as const,
-    justifyContent: "center" as const,
-    gap: 10,
-    paddingHorizontal: 15,
-    marginTop: 4,
-  },
-  primaryButtonText: {
-    color: C.navy,
-    fontSize: 13,
-    fontWeight: "800" as const,
-  },
-  sectionLabel: {
-    fontSize: 10,
-    letterSpacing: 1.1,
-    fontWeight: "800" as const,
-    color: C.muted,
-    marginTop: 12,
     marginBottom: 12,
   },
-  choiceRow: {
-    flexDirection: "row" as const,
-    alignItems: "center" as const,
-    gap: 10,
-    paddingVertical: 10,
+  title: {
+    fontSize: 30,
+    fontWeight: "800",
+    color: C.text,
+    marginBottom: 12,
   },
-  choiceText: { color: C.ink, fontSize: 13 },
-  secondaryButton: {
-    minHeight: 47,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: C.line,
-    flexDirection: "row" as const,
-    alignItems: "center" as const,
-    justifyContent: "center" as const,
-    gap: 9,
+  description: {
+    fontSize: 14,
+    lineHeight: 22,
+    color: C.muted,
+    marginTop: 8,
+    marginBottom: 18,
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 18,
+  },
+  cameraContainer: {
+    height: 340,
+    overflow: "hidden",
+    borderRadius: 24,
+    backgroundColor: "#111111",
+  },
+  scanFrame: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  corner: {
+    position: "absolute",
+    width: 42,
+    height: 42,
+    borderColor: "#FFFFFF",
+  },
+  topLeft: {
+    top: "30%",
+    left: "12%",
+    borderTopWidth: 4,
+    borderLeftWidth: 4,
+    borderTopLeftRadius: 12,
+  },
+  topRight: {
+    top: "30%",
+    right: "12%",
+    borderTopWidth: 4,
+    borderRightWidth: 4,
+    borderTopRightRadius: 12,
+  },
+  bottomLeft: {
+    bottom: "30%",
+    left: "12%",
+    borderBottomWidth: 4,
+    borderLeftWidth: 4,
+    borderBottomLeftRadius: 12,
+  },
+  bottomRight: {
+    bottom: "30%",
+    right: "12%",
+    borderBottomWidth: 4,
+    borderRightWidth: 4,
+    borderBottomRightRadius: 12,
+  },
+  hint: {
+    textAlign: "center",
+    fontSize: 13,
+    lineHeight: 20,
+    color: C.muted,
+    marginVertical: 18,
+  },
+  card: {
+    padding: 22,
+    borderRadius: 22,
+    backgroundColor: C.card,
+    marginBottom: 18,
+  },
+  cardTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: C.text,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  hero: {
+    padding: 22,
+    borderRadius: 24,
+    backgroundColor: C.card,
+    marginTop: 10,
+    marginBottom: 28,
+  },
+  heroTitle: {
+    fontSize: 23,
+    fontWeight: "800",
+    color: C.text,
+    marginTop: 18,
+  },
+  sectionTitle: {
+    fontSize: 19,
+    fontWeight: "800",
+    color: C.text,
     marginBottom: 14,
   },
-  secondaryButtonText: { color: C.ink, fontSize: 12, fontWeight: "700" as const },
-  darkList: {
-    backgroundColor: C.navy,
-    borderRadius: 17,
-    overflow: "hidden" as const,
-  },
-  searchBox: {
-    minHeight: 49,
-    flexDirection: "row" as const,
-    alignItems: "center" as const,
-    gap: 9,
-    paddingHorizontal: 13,
-    backgroundColor: C.white,
-    borderRadius: 13,
-    borderWidth: 1,
-    borderColor: C.line,
-    marginBottom: 16,
-  },
-  searchInput: { flex: 1, color: C.ink, fontSize: 12, paddingVertical: 11 },
-  categoryPill: {
-    backgroundColor: C.white,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: C.line,
-    paddingHorizontal: 13,
-    paddingVertical: 9,
-    alignSelf: "flex-start" as const,
-  },
-  categoryPillText: { fontSize: 10, fontWeight: "700" as const, color: C.ink },
-  productCard: {
-    flexDirection: "row" as const,
-    alignItems: "center" as const,
-    backgroundColor: C.white,
+  primaryButton: {
+    minHeight: 52,
     borderRadius: 15,
-    padding: 11,
-    gap: 12,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: C.line,
-  },
-  productImage: {
-    width: 65,
-    height: 70,
-    borderRadius: 10,
-    backgroundColor: C.bg,
-  },
-  productName: { color: C.ink, fontSize: 12, fontWeight: "700" as const },
-  productMeta: { color: C.muted, fontSize: 10, marginTop: 4 },
-  productCategory: { color: "#99845D", fontSize: 10, marginTop: 5 },
-  emptyState: {
-    alignItems: "center" as const,
-    padding: 28,
-    backgroundColor: C.white,
-    borderRadius: 17,
-    borderWidth: 1,
-    borderColor: C.line,
-  },
-  emptyTitle: { color: C.ink, fontSize: 15, fontWeight: "700" as const, marginTop: 12 },
-  emptyText: {
-    color: C.muted,
-    fontSize: 12,
-    lineHeight: 19,
-    textAlign: "center" as const,
+    backgroundColor: C.text,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 18,
     marginTop: 8,
   },
-  settingRow: {
-    flexDirection: "row" as const,
-    alignItems: "center" as const,
-    gap: 12,
-    paddingVertical: 16,
-    borderTopWidth: 1,
-    borderTopColor: C.line,
+  primaryButtonText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#FFFFFF",
   },
-  settingText: { flex: 1, color: C.ink, fontSize: 13 },
-};
+  secondaryButton: {
+    minHeight: 48,
+    borderRadius: 15,
+    backgroundColor: C.card,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 12,
+  },
+  secondaryText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: C.text,
+  },
+  loading: {
+    padding: 30,
+    alignItems: "center",
+    gap: 14,
+  },
+  productImage: {
+    width: "100%",
+    height: 200,
+    borderRadius: 16,
+    backgroundColor: "#FFFFFF",
+    marginBottom: 18,
+  },
+  productName: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: C.text,
+    marginBottom: 8,
+  },
+  detail: {
+    fontSize: 13,
+    lineHeight: 21,
+    color: C.text,
+    marginTop: 5,
+  },
+});
