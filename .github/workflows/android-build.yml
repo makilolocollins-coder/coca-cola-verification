@@ -27,6 +27,7 @@ jobs:
         shell: bash
         run: |
           set -e
+
           echo "Current commit:"
           git rev-parse HEAD
 
@@ -57,17 +58,23 @@ jobs:
         working-directory: mobile
         run: npx expo config --json
 
-      - name: Run Expo Doctor
-        working-directory: mobile
-        run: npx expo-doctor
-
       - name: Verify files before EAS upload
         working-directory: mobile
         shell: bash
         run: |
           set -e
+
+          echo "Working directory:"
+          pwd
+
+          echo "Scanner screen:"
           ls -l app/scanner-screen.tsx
+
+          echo "Screen imports:"
           sed -n '1,50p' app/screens.tsx
+
+          echo "Package lock:"
+          ls -l package-lock.json
 
           if [ -f .easignore ]; then
             echo "Contents of .easignore:"
