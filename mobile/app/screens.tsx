@@ -24,11 +24,7 @@ import {
 import ScannerScreen from "./scanner-screen";
 import ResultsScreen, { ProductInfo } from "./results-screen";
 
-import {
-  detectLocation,
-  ScanLocation,
-} from "./location-service";
-
+import { detectLocation, ScanLocation } from "./location-service";
 import { verifyBottle } from "../verification";
 
 type Props = {
@@ -46,14 +42,14 @@ type Product = {
   categories?: string;
 };
 
+const QR_MARKER = "__VERITY_QR__:";
+
 export default function Screens({
   screen,
   records,
-  onNavigate,
 }: Props) {
   const [scannerOpen, setScannerOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [locationLoading, setLocationLoading] = useState(false);
   const [verifying, setVerifying] = useState(false);
 
   const [product, setProduct] = useState<Product | null>(null);
@@ -63,11 +59,9 @@ export default function Screens({
 
   const [message, setMessage] = useState("");
   const [verificationMessage, setVerificationMessage] = useState("");
-
   const [scanLocation, setScanLocation] =
     useState<ScanLocation | null>(null);
 
-  // Reset the current product check.
   const reset = () => {
     setScannerOpen(false);
     setLoading(false);
@@ -78,26 +72,48 @@ export default function Screens({
     setQrToken("");
     setMessage("");
     setVerificationMessage("");
+    setScanLocation(null);
   };
 
-  // Open camera independently of GPS.
-  const openScanner = async () => {
-    reset();
+  const openScanner = () => {
     setScannerOpen(true);
-    setLocationLoading(true);
-
-    try {
-      const location = await detectLocation();
-      setScanLocation(location);
-    } catch {
-      setScanLocation(null);
-    } finally {
-      setLocationLoading(false);
-    }
   };
 
-  // Look up product information using its barcode.
-  // This does not establish product authenticity.
+  // QR codes and barcodes are handled separately.
+  const handleScan = (code: string) => {
+    const scannedValue = code.trim();
+
+    if (!scannedValue) {
+      setScannerOpen(false);
+      setMessage("The scanner did not return a readable code.");
+      return;
+    }
+
+    if (scannedValue.startsWith(QR_MARKER)) {
+      const capturedQr = scannedValue
+        .slice(QR_MARKER.length)
+        .trim();
+
+      setScannerOpen(false);
+
+      if (!capturedQr) {
+        setMessage("The QR code was empty or could not be read.");
+        return;
+      }
+
+      setQrToken(capturedQr);
+      setVerificationMessage("");
+      setMessage(
+        "QR code captured successfully. Enter or scan the product barcode and enter its serial number before submitting verification."
+      );
+
+      return;
+    }
+
+    lookupProduct(scannedValue);
+  };
+
+  // Barcode lookup retrieves product information only.
   const lookupProduct = async (code: string) => {
     const cleanCode = code.trim();
 
@@ -118,7 +134,7 @@ export default function Screens({
       );
 
       if (!response.ok) {
-        throw new Error("Product lookup failed");
+        throw new Error("Product lookup failed.");
       }
 
       const result = await response.json();
@@ -143,12 +159,11 @@ export default function Screens({
     }
   };
 
-  // Submit identifiers to the VERITY verification service.
   const handleVerify = async () => {
     if (!barcode.trim()) {
       Alert.alert(
         "Missing barcode",
-        "Scan or enter a product barcode first."
+        "Scan or enter the product barcode first."
       );
       return;
     }
@@ -156,7 +171,7 @@ export default function Screens({
     if (!serialNumber.trim() || !qrToken.trim()) {
       Alert.alert(
         "Missing verification details",
-        "Enter the product serial number and QR token. These are required by the current verification service."
+        "Enter the product serial number and QR token. Both are required by the current verification service."
       );
       return;
     }
@@ -165,17 +180,16 @@ export default function Screens({
     setVerificationMessage("");
 
     try {
-      let location = scanLocation;
+      // Request a fresh location for every verification attempt.
+      let location: ScanLocation;
 
-      if (!location) {
-        try {
-          location = await detectLocation();
-          setScanLocation(location);
-        } catch {
-          throw new Error(
-            "Location is unavailable. Enable GPS and grant location permission before verifying."
-          );
-        }
+      try {
+        location = await detectLocation();
+        setScanLocation(location);
+      } catch {
+        throw new Error(
+          "Location is unavailable. Enable GPS and grant location permission before verifying."
+        );
       }
 
       const result = await verifyBottle({
@@ -185,8 +199,6 @@ export default function Screens({
         latitude: location.latitude,
         longitude: location.longitude,
         town: location.placeName,
-        region: "",
-        country: "",
         scan_place: location.locationText,
       });
 
@@ -208,7 +220,6 @@ export default function Screens({
     }
   };
 
-  // Location information card.
   const locationCard = () => (
     <View style={styles.locationCard}>
       <Ionicons
@@ -223,12 +234,12 @@ export default function Screens({
         </Text>
 
         <Text style={styles.locationPlace}>
-          {scanLocation?.placeName || "Location not available"}
+          {scanLocation?.placeName || "Location not recorded yet"}
         </Text>
 
         <Text style={styles.locationDetails}>
           {scanLocation?.locationText ||
-            "Location will be requested when verification is attempted."}
+            "Your current location will be requested when you submit verification."}
         </Text>
       </View>
     </View>
@@ -238,14 +249,14 @@ export default function Screens({
   if (scannerOpen) {
     return (
       <ScannerScreen
-        onScan={lookupProduct}
+        onScan={handleScan}
         onCancel={() => setScannerOpen(false)}
       />
     );
   }
 
-  // PRODUCT RESULTS SCREEN
-  if (loading || barcode || message) {
+  // PRODUCT AND VERIFICATION RESULTS
+  if (loading || barcode || message || qrToken) {
     const resultProduct: ProductInfo | null = product
       ? {
           name: product.product_name,
@@ -301,9 +312,37 @@ export default function Screens({
           </Text>
 
           <Text style={styles.formDescription}>
-            Enter the identifiers registered for this product.
-            A barcode lookup alone cannot establish authenticity.
+            Provide the product identifiers registered with the
+            verification service. Product database information
+            alone does not establish authenticity.
           </Text>
+
+          <Text style={styles.inputLabel}>
+            PRODUCT BARCODE
+          </Text>
+
+          <TextInput
+            value={barcode}
+            onChangeText={setBarcode}
+            placeholder="Scan or enter product barcode"
+            placeholderTextColor={C.muted}
+            keyboardType="number-pad"
+            style={styles.input}
+          />
+
+          <TouchableOpacity
+            style={styles.scanButton}
+            onPress={openScanner}
+          >
+            <Ionicons
+              name="scan-outline"
+              size={18}
+              color={C.text}
+            />
+            <Text style={styles.scanButtonText}>
+              Scan barcode or QR code
+            </Text>
+          </TouchableOpacity>
 
           <Text style={styles.inputLabel}>
             SERIAL NUMBER
@@ -325,11 +364,18 @@ export default function Screens({
           <TextInput
             value={qrToken}
             onChangeText={setQrToken}
-            placeholder="Enter QR token"
+            placeholder="Scan QR code or enter token"
             placeholderTextColor={C.muted}
             autoCapitalize="none"
             style={styles.input}
           />
+
+          {qrToken ? (
+            <Text style={styles.capturedText}>
+              QR data captured. Check that it matches the registered
+              token before submitting.
+            </Text>
+          ) : null}
 
           <TouchableOpacity
             style={[
@@ -361,6 +407,12 @@ export default function Screens({
           </View>
         ) : null}
 
+        <Text style={styles.disclaimer}>
+          A successful database response confirms only what the
+          connected registry reports. It does not independently
+          prove the physical product is genuine.
+        </Text>
+
         <TouchableOpacity
           style={styles.secondaryButton}
           onPress={reset}
@@ -389,9 +441,9 @@ export default function Screens({
         </Text>
 
         <Text style={styles.description}>
-          Scan a food product barcode to retrieve available product
-          information. You can then submit its registered identifiers
-          for verification.
+          Scan a food product barcode or QR code to retrieve
+          available product information and capture its
+          verification identifiers.
         </Text>
 
         <View style={styles.card}>
@@ -404,16 +456,6 @@ export default function Screens({
           <Text style={styles.cardTitle}>
             Camera scanner
           </Text>
-
-          {scanLocation ? locationCard() : null}
-
-          {locationLoading ? (
-            <ActivityIndicator
-              style={{ margin: 18 }}
-              size="small"
-              color={C.gold}
-            />
-          ) : null}
 
           <TouchableOpacity
             style={styles.primaryButton}
@@ -452,7 +494,7 @@ export default function Screens({
         {records.length > 0 ? (
           records.map((record, index) => (
             <ScanRow
-              key={index}
+              key={record.id || index}
               record={record}
             />
           ))
@@ -465,15 +507,6 @@ export default function Screens({
             <Text style={styles.description}>
               Start scanning products to review their available details.
             </Text>
-
-            <TouchableOpacity
-              style={styles.primaryButton}
-              onPress={() => onNavigate("Verify")}
-            >
-              <Text style={styles.primaryButtonText}>
-                Scan a product
-              </Text>
-            </TouchableOpacity>
           </View>
         )}
       </ScrollView>
@@ -568,10 +601,13 @@ export default function Screens({
 
           <TouchableOpacity
             style={styles.primaryButton}
-            onPress={() => onNavigate("Verify")}
+            onPress={() => {
+              reset();
+              // Navigation is handled by the parent app.
+            }}
           >
             <Text style={styles.primaryButtonText}>
-              Check product
+              Use the Verify tab to scan
             </Text>
           </TouchableOpacity>
         </View>
@@ -639,15 +675,6 @@ export default function Screens({
           title="Authorised access"
           text="Company accounts should be created and approved by the VERITY administrator. This page does not currently authenticate company users."
         />
-
-        <TouchableOpacity
-          style={styles.secondaryButton}
-          onPress={() => onNavigate("Verify")}
-        >
-          <Text style={styles.secondaryText}>
-            Return to product verification
-          </Text>
-        </TouchableOpacity>
       </ScrollView>
     );
   }
@@ -687,14 +714,9 @@ export default function Screens({
           registered identifiers for verification.
         </Text>
 
-        <TouchableOpacity
-          style={styles.primaryButton}
-          onPress={() => onNavigate("Verify")}
-        >
-          <Text style={styles.primaryButtonText}>
-            Start scanning
-          </Text>
-        </TouchableOpacity>
+        <Text style={styles.primaryButtonText}>
+          Use the Verify tab to start scanning.
+        </Text>
       </View>
 
       <Text style={styles.sectionTitle}>
@@ -704,7 +726,7 @@ export default function Screens({
       <InfoCard
         icon="scan-outline"
         title="01. Scan"
-        text="Capture the product barcode."
+        text="Capture the product barcode or QR code."
       />
 
       <InfoCard
@@ -716,7 +738,7 @@ export default function Screens({
       <InfoCard
         icon="location-outline"
         title="03. Locate"
-        text="Record scan coordinates where location permission is available."
+        text="Record scan coordinates when location permission is available."
       />
 
       <InfoCard
@@ -787,14 +809,6 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: C.text,
     marginTop: 18,
-  },
-
-  cardTitle: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: C.text,
-    marginTop: 16,
-    marginBottom: 8,
   },
 
   primaryButton: {
@@ -918,6 +932,31 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 
+  scanButton: {
+    minHeight: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 9,
+    marginTop: 10,
+  },
+
+  scanButtonText: {
+    color: C.text,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+
+  capturedText: {
+    color: C.muted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 8,
+  },
+
   verifyButton: {
     minHeight: 52,
     borderRadius: 14,
@@ -939,6 +978,14 @@ const styles = StyleSheet.create({
     backgroundColor: C.card,
     borderWidth: 1,
     borderColor: C.border,
+    marginTop: 18,
+  },
+
+  disclaimer: {
+    color: C.muted,
+    fontSize: 12,
+    lineHeight: 19,
+    textAlign: "center",
     marginTop: 18,
   },
 
