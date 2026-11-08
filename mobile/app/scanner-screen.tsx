@@ -13,6 +13,7 @@ import {
   CameraView,
   useCameraPermissions,
   type BarcodeType,
+  type BarcodeScanningResult,
 } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
 import { C } from "./components";
@@ -21,6 +22,8 @@ type ScannerScreenProps = {
   onScan: (code: string) => void;
   onCancel: () => void;
 };
+
+const QR_MARKER = "__VERITY_QR__:";
 
 const BARCODE_TYPES: BarcodeType[] = [
   "ean13",
@@ -32,9 +35,6 @@ const BARCODE_TYPES: BarcodeType[] = [
   "code93",
   "itf14",
   "qr",
-  "pdf417",
-  "aztec",
-  "datamatrix",
 ];
 
 export default function ScannerScreen({
@@ -49,30 +49,35 @@ export default function ScannerScreen({
 
   const scanLock = useRef(false);
 
-  const submitCode = (code: string) => {
-    const cleanedCode = code?.trim();
+  const submitCode = (
+    data: string,
+    type: BarcodeType
+  ) => {
+    const cleaned = data?.trim();
 
-    if (!cleanedCode || scanLock.current) {
-      return;
-    }
+    if (!cleaned || scanLock.current) return;
 
     scanLock.current = true;
     setHasScanned(true);
-    onScan(cleanedCode);
+
+    // Mark QR data so the verification screen
+    // does not mistake it for a product barcode.
+    const result =
+      type === "qr"
+        ? `${QR_MARKER}${cleaned}`
+        : cleaned;
+
+    onScan(result);
   };
 
-  const handleCameraScan = ({
-    data,
-  }: {
-    data: string;
-  }) => {
-    submitCode(data);
+  const handleCameraScan = (
+    result: BarcodeScanningResult
+  ) => {
+    submitCode(result.data, result.type);
   };
 
   const uploadCodeImage = async () => {
-    if (processingImage || scanLock.current) {
-      return;
-    }
+    if (processingImage || scanLock.current) return;
 
     try {
       const result =
@@ -88,30 +93,31 @@ export default function ScannerScreen({
 
       setProcessingImage(true);
 
-      const codes = await CameraView.scanFromURLAsync(
-        result.assets[0].uri,
-        BARCODE_TYPES
-      );
+      const detectedCodes =
+        await CameraView.scanFromURLAsync(
+          result.assets[0].uri,
+          BARCODE_TYPES
+        );
 
-      if (!codes || codes.length === 0) {
+      if (!detectedCodes?.length) {
         Alert.alert(
           "No code detected",
-          "We could not find a readable barcode or QR code in this image. Try a clearer, well-lit photo with the entire code visible."
+          "We could not find a readable barcode or QR code. Try a clearer photo with the complete code visible."
         );
         return;
       }
 
-      const detectedCode = codes[0]?.data;
+      const detected = detectedCodes[0];
 
-      if (!detectedCode) {
+      if (!detected?.data || !detected?.type) {
         Alert.alert(
           "Unable to read code",
-          "Please choose another image and try again."
+          "Please select another image and try again."
         );
         return;
       }
 
-      submitCode(detectedCode);
+      submitCode(detected.data, detected.type);
     } catch (error) {
       Alert.alert(
         "Image scanning failed",
@@ -244,7 +250,6 @@ export default function ScannerScreen({
             <View style={styles.cornerTopRight} />
             <View style={styles.cornerBottomLeft} />
             <View style={styles.cornerBottomRight} />
-
             <View style={styles.scanLine} />
           </View>
 
