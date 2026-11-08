@@ -14,6 +14,7 @@ import {
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
 import AppScreen from "./screens";
+
 import {
   C,
   photos,
@@ -68,9 +69,12 @@ export default function App() {
   const [screen, setScreen] = useState<ScreenName>("Home");
   const [scans] = useState<ScanRecord[]>(sampleScans);
 
-  const goTo = (next: ScreenName) => setScreen(next);
+  const goTo = (next: ScreenName) => {
+    setScreen(next);
+  };
 
-  // Looks up a barcode received from the camera scanner.
+  // Product information lookup.
+  // This does not establish product authenticity.
   const handleVerify = async (code: string) => {
     const barcode = code.trim();
 
@@ -119,11 +123,21 @@ export default function App() {
       }
 
       const product = data.product;
-      const name = product.product_name || "Product name unavailable";
-      const brand = product.brands || "Brand unavailable";
-      const quantity = product.quantity || "Not listed";
-      const category = product.categories || "Not listed";
-      const ingredients = product.ingredients_text || "Not listed";
+
+      const name =
+        product.product_name || "Product name unavailable";
+
+      const brand =
+        product.brands || "Brand unavailable";
+
+      const quantity =
+        product.quantity || "Not listed";
+
+      const category =
+        product.categories || "Not listed";
+
+      const ingredients =
+        product.ingredients_text || "Not listed";
 
       Alert.alert(
         name,
@@ -163,6 +177,7 @@ export default function App() {
             size={47}
             color={C.navy}
           />
+
           <View style={homeStyles.brandMarkInner}>
             <MaterialCommunityIcons
               name="shield-check-outline"
@@ -174,7 +189,9 @@ export default function App() {
 
         <View style={{ flex: 1, marginLeft: 9 }}>
           <Text style={homeStyles.brandName}>VERITY</Text>
-          <Text style={homeStyles.brandSub}>FOOD AUTHENTICATION</Text>
+          <Text style={homeStyles.brandSub}>
+            FOOD AUTHENTICATION
+          </Text>
         </View>
 
         <TouchableOpacity
@@ -193,11 +210,13 @@ export default function App() {
         <View style={homeStyles.heroCopy}>
           <Text style={homeStyles.heroTitle}>Facts first.</Text>
           <Text style={homeStyles.heroGold}>Always.</Text>
+
           <Text style={homeStyles.heroDescription}>
-            Check food products against trusted records. Make informed choices
-            about what you buy.
+            Check food products against trusted records.
+            Make informed choices about what you buy.
           </Text>
         </View>
+
         <Image
           source={{ uri: photos.hero }}
           style={homeStyles.heroImage}
@@ -219,14 +238,22 @@ export default function App() {
 
         <View style={{ flex: 1, marginLeft: 14 }}>
           <Text style={homeStyles.eyebrow}>START HERE</Text>
-          <Text style={homeStyles.mainScanTitle}>Verify a product</Text>
+
+          <Text style={homeStyles.mainScanTitle}>
+            Verify a product
+          </Text>
+
           <Text style={homeStyles.mainScanSub}>
             Barcode · QR code · Product code
           </Text>
         </View>
 
         <View style={homeStyles.arrowCircle}>
-          <Ionicons name="arrow-forward" size={23} color={C.navy} />
+          <Ionicons
+            name="arrow-forward"
+            size={23}
+            color={C.navy}
+          />
         </View>
       </TouchableOpacity>
 
@@ -241,6 +268,7 @@ export default function App() {
               subtitle={section.subtitle}
               onPress={() => goTo(section.screen)}
             />
+
             {index === 0 && (
               <View style={homeStyles.sectionHint}>
                 <Ionicons
@@ -248,6 +276,7 @@ export default function App() {
                   size={15}
                   color={C.muted}
                 />
+
                 <Text style={homeStyles.sectionHintText}>
                   A product lookup is not proof of authenticity.
                 </Text>
@@ -279,7 +308,9 @@ export default function App() {
               source={{ uri: item.image }}
               style={homeStyles.categoryImage}
             />
+
             <View style={homeStyles.categoryShade} />
+
             <View style={homeStyles.categoryIcon}>
               <MaterialCommunityIcons
                 name={item.icon as any}
@@ -287,9 +318,15 @@ export default function App() {
                 color={C.goldLight}
               />
             </View>
+
             <View style={homeStyles.categoryCopy}>
-              <Text style={homeStyles.categoryName}>{item.name}</Text>
-              <Text style={homeStyles.categorySub}>{item.sub}</Text>
+              <Text style={homeStyles.categoryName}>
+                {item.name}
+              </Text>
+
+              <Text style={homeStyles.categorySub}>
+                {item.sub}
+              </Text>
             </View>
           </TouchableOpacity>
         ))}
@@ -309,6 +346,7 @@ export default function App() {
             onPress={() => openSampleScan(item)}
           />
         ))}
+
         <Text style={homeStyles.demoNote}>
           Sample entries only. Live scan history is not connected.
         </Text>
@@ -320,13 +358,16 @@ export default function App() {
           size={39}
           color={C.gold}
         />
+
         <View style={{ flex: 1 }}>
           <Text style={homeStyles.missionTitle}>
             Trust backed by evidence.
           </Text>
+
           <Text style={homeStyles.missionText}>
-            VERITY is designed to compare product information with trusted
-            records and flag inconsistencies for investigation.
+            VERITY is designed to compare product information
+            with trusted records and flag inconsistencies for
+            investigation.
           </Text>
         </View>
       </View>
@@ -340,52 +381,53 @@ export default function App() {
           size={23}
           color={C.goldLight}
         />
+
         <View style={{ flex: 1 }}>
           <Text style={homeStyles.companyTitle}>
             For food and FMCG companies
           </Text>
+
           <Text style={homeStyles.companySubtitle}>
             Open the secure company portal
           </Text>
         </View>
-        <Ionicons name="arrow-forward" size={19} color={C.goldLight} />
+
+        <Ionicons
+          name="arrow-forward"
+          size={19}
+          color={C.goldLight}
+        />
       </TouchableOpacity>
     </>
   );
 
   return (
     <SafeAreaView style={homeStyles.safe}>
-      <StatusBar barStyle="dark-content" backgroundColor={C.bg} />
+      <StatusBar
+        barStyle="dark-content"
+        backgroundColor={C.bg}
+      />
 
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={homeStyles.page}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        {screen === "Home" ? (
-          renderHome()
-        ) : (
-          <View style={homeStyles.otherScreen}>
-            <TouchableOpacity
-              style={homeStyles.backButton}
-              onPress={() => goTo("Home")}
-            >
-              <Ionicons name="arrow-back" size={19} color={C.ink} />
-              <Text style={homeStyles.backText}>Home</Text>
-            </TouchableOpacity>
-
-            <AppScreen
-              screen={screen}
-              scans={scans}
-              goTo={goTo}
-              onVerify={handleVerify}
-            />
-          </View>
-        )}
-
-        <View style={{ height: 24 }} />
-      </ScrollView>
+      {screen === "Home" ? (
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={homeStyles.page}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {renderHome()}
+          <View style={{ height: 24 }} />
+        </ScrollView>
+      ) : (
+        <View style={{ flex: 1 }}>
+          <AppScreen
+            screen={screen}
+            records={scans}
+            onNavigate={goTo}
+            onVerify={handleVerify}
+          />
+        </View>
+      )}
 
       <View style={homeStyles.bottomNav}>
         {nav.map((item) => {
@@ -416,10 +458,12 @@ export default function App() {
                         : "#BFC5C7"
                   }
                 />
+
                 {item.name === "Alerts" && (
                   <View style={homeStyles.navDot} />
                 )}
               </View>
+
               <Text
                 style={[
                   homeStyles.navLabel,
@@ -428,6 +472,7 @@ export default function App() {
               >
                 {item.name === "Verify" ? "Scan" : item.name}
               </Text>
+
               {active && !isVerify ? (
                 <View style={homeStyles.activeDot} />
               ) : null}
@@ -440,8 +485,15 @@ export default function App() {
 }
 
 const homeStyles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: C.bg },
-  page: { paddingTop: 12, paddingBottom: 12 },
+  safe: {
+    flex: 1,
+    backgroundColor: C.bg,
+  },
+
+  page: {
+    paddingTop: 12,
+    paddingBottom: 12,
+  },
 
   brandRow: {
     flexDirection: "row",
@@ -449,25 +501,32 @@ const homeStyles = StyleSheet.create({
     paddingHorizontal: 22,
     marginBottom: 17,
   },
+
   brandMark: {
     width: 53,
     height: 56,
     justifyContent: "center",
     alignItems: "center",
   },
-  brandMarkInner: { position: "absolute" },
+
+  brandMarkInner: {
+    position: "absolute",
+  },
+
   brandName: {
     fontSize: 29,
     letterSpacing: 7,
     fontWeight: "500",
     color: C.navy,
   },
+
   brandSub: {
     fontSize: 9,
     letterSpacing: 1.2,
     color: "#99845D",
     marginTop: 2,
   },
+
   bell: {
     width: 45,
     height: 45,
@@ -484,7 +543,13 @@ const homeStyles = StyleSheet.create({
     justifyContent: "center",
     overflow: "hidden",
   },
-  heroCopy: { width: "78%", zIndex: 2, paddingTop: 8 },
+
+  heroCopy: {
+    width: "78%",
+    zIndex: 2,
+    paddingTop: 8,
+  },
+
   heroTitle: {
     fontSize: 40,
     fontWeight: "700",
@@ -493,6 +558,7 @@ const homeStyles = StyleSheet.create({
     lineHeight: 46,
     fontFamily: "Georgia",
   },
+
   heroGold: {
     fontSize: 40,
     fontWeight: "700",
@@ -501,6 +567,7 @@ const homeStyles = StyleSheet.create({
     lineHeight: 45,
     fontFamily: "Georgia",
   },
+
   heroDescription: {
     fontSize: 13,
     lineHeight: 21,
@@ -508,6 +575,7 @@ const homeStyles = StyleSheet.create({
     marginTop: 14,
     maxWidth: 265,
   },
+
   heroImage: {
     position: "absolute",
     right: -30,
@@ -533,6 +601,7 @@ const homeStyles = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
   },
+
   mainScanIcon: {
     width: 67,
     height: 74,
@@ -541,6 +610,7 @@ const homeStyles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+
   eyebrow: {
     color: C.goldLight,
     fontSize: 10,
@@ -548,6 +618,7 @@ const homeStyles = StyleSheet.create({
     letterSpacing: 1.2,
     marginBottom: 6,
   },
+
   mainScanTitle: {
     color: C.white,
     fontSize: 18,
@@ -555,7 +626,13 @@ const homeStyles = StyleSheet.create({
     fontWeight: "700",
     marginBottom: 5,
   },
-  mainScanSub: { color: "#D4D8D9", fontSize: 10, lineHeight: 16 },
+
+  mainScanSub: {
+    color: "#D4D8D9",
+    fontSize: 10,
+    lineHeight: 16,
+  },
+
   arrowCircle: {
     width: 42,
     height: 42,
@@ -574,7 +651,12 @@ const homeStyles = StyleSheet.create({
     marginBottom: 12,
     paddingHorizontal: 3,
   },
-  sectionHintText: { fontSize: 10, color: C.muted, flex: 1 },
+
+  sectionHintText: {
+    fontSize: 10,
+    color: C.muted,
+    flex: 1,
+  },
 
   categoryList: {
     paddingLeft: 20,
@@ -582,6 +664,7 @@ const homeStyles = StyleSheet.create({
     gap: 9,
     marginBottom: 22,
   },
+
   categoryCard: {
     width: 130,
     height: 190,
@@ -589,15 +672,18 @@ const homeStyles = StyleSheet.create({
     borderRadius: 16,
     overflow: "hidden",
   },
+
   categoryImage: {
     ...StyleSheet.absoluteFillObject,
     width: undefined,
     height: undefined,
   },
+
   categoryShade: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(5,14,19,0.46)",
   },
+
   categoryIcon: {
     position: "absolute",
     left: 12,
@@ -611,14 +697,26 @@ const homeStyles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "rgba(10,20,25,0.5)",
   },
-  categoryCopy: { position: "absolute", bottom: 12, left: 12, right: 8 },
+
+  categoryCopy: {
+    position: "absolute",
+    bottom: 12,
+    left: 12,
+    right: 8,
+  },
+
   categoryName: {
     color: C.white,
     fontSize: 11,
     fontWeight: "700",
     marginBottom: 5,
   },
-  categorySub: { color: "#E0E2E1", fontSize: 9, lineHeight: 14 },
+
+  categorySub: {
+    color: "#E0E2E1",
+    fontSize: 9,
+    lineHeight: 14,
+  },
 
   recentCard: {
     backgroundColor: C.navy,
@@ -627,6 +725,7 @@ const homeStyles = StyleSheet.create({
     overflow: "hidden",
     marginBottom: 18,
   },
+
   demoNote: {
     color: "#C1C8C9",
     fontSize: 10,
@@ -647,13 +746,19 @@ const homeStyles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
   },
+
   missionTitle: {
     color: C.ink,
     fontSize: 13,
     fontWeight: "700",
     marginBottom: 6,
   },
-  missionText: { color: "#555B5B", fontSize: 11, lineHeight: 16 },
+
+  missionText: {
+    color: "#555B5B",
+    fontSize: 11,
+    lineHeight: 16,
+  },
 
   companyLink: {
     marginHorizontal: 20,
@@ -664,20 +769,18 @@ const homeStyles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
   },
-  companyTitle: { color: C.white, fontSize: 12, fontWeight: "700" },
-  companySubtitle: { color: "#D0D5D5", fontSize: 10, marginTop: 5 },
 
-  otherScreen: { paddingHorizontal: 20, paddingTop: 8 },
-  backButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    alignSelf: "flex-start",
-    paddingVertical: 12,
-    paddingRight: 16,
-    marginBottom: 13,
+  companyTitle: {
+    color: C.white,
+    fontSize: 12,
+    fontWeight: "700",
   },
-  backText: { color: C.ink, fontSize: 12, fontWeight: "700" },
+
+  companySubtitle: {
+    color: "#D0D5D5",
+    fontSize: 10,
+    marginTop: 5,
+  },
 
   bottomNav: {
     minHeight: 77,
@@ -688,12 +791,14 @@ const homeStyles = StyleSheet.create({
     paddingHorizontal: 5,
     paddingBottom: 4,
   },
+
   navItem: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     minHeight: 66,
   },
+
   navIconWrap: {
     width: 42,
     height: 34,
@@ -701,6 +806,7 @@ const homeStyles = StyleSheet.create({
     justifyContent: "center",
     position: "relative",
   },
+
   navScan: {
     width: 53,
     height: 53,
@@ -710,6 +816,7 @@ const homeStyles = StyleSheet.create({
     borderWidth: 4,
     borderColor: C.bg,
   },
+
   navDot: {
     width: 6,
     height: 6,
@@ -719,8 +826,18 @@ const homeStyles = StyleSheet.create({
     top: 3,
     right: 4,
   },
-  navLabel: { color: "#BFC5C7", fontSize: 9, marginTop: 4 },
-  navLabelActive: { color: C.goldLight, fontWeight: "700" },
+
+  navLabel: {
+    color: "#BFC5C7",
+    fontSize: 9,
+    marginTop: 4,
+  },
+
+  navLabelActive: {
+    color: C.goldLight,
+    fontWeight: "700",
+  },
+
   activeDot: {
     width: 5,
     height: 5,
