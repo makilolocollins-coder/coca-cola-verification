@@ -50,7 +50,6 @@ export default function Screens({
   screen,
   records,
   onNavigate,
-  onVerify,
 }: Props) {
   const [scannerOpen, setScannerOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -68,6 +67,7 @@ export default function Screens({
   const [scanLocation, setScanLocation] =
     useState<ScanLocation | null>(null);
 
+  // Reset the current product check.
   const reset = () => {
     setScannerOpen(false);
     setLoading(false);
@@ -80,8 +80,7 @@ export default function Screens({
     setVerificationMessage("");
   };
 
-  // Open the camera independently of GPS.
-  // Location is useful metadata, but should not prevent scanning.
+  // Open camera independently of GPS.
   const openScanner = async () => {
     reset();
     setScannerOpen(true);
@@ -97,8 +96,11 @@ export default function Screens({
     }
   };
 
+  // Look up product information using its barcode.
+  // This does not establish product authenticity.
   const lookupProduct = async (code: string) => {
     const cleanCode = code.trim();
+
     if (!cleanCode || loading) return;
 
     setBarcode(cleanCode);
@@ -108,8 +110,6 @@ export default function Screens({
     setMessage("");
     setVerificationMessage("");
 
-    // This lookup is for product barcodes.
-    // A QR URL or arbitrary QR text is not necessarily a barcode.
     try {
       const response = await fetch(
         `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(
@@ -125,6 +125,7 @@ export default function Screens({
 
       if (result.status === 1 && result.product) {
         setProduct(result.product);
+
         setMessage(
           "Product information found. Compare it with the physical packaging. This lookup does not prove authenticity."
         );
@@ -142,9 +143,13 @@ export default function Screens({
     }
   };
 
+  // Submit identifiers to the VERITY verification service.
   const handleVerify = async () => {
     if (!barcode.trim()) {
-      Alert.alert("Missing barcode", "Scan or enter a product barcode first.");
+      Alert.alert(
+        "Missing barcode",
+        "Scan or enter a product barcode first."
+      );
       return;
     }
 
@@ -160,7 +165,6 @@ export default function Screens({
     setVerificationMessage("");
 
     try {
-      // Try to obtain location again if it was unavailable during scanning.
       let location = scanLocation;
 
       if (!location) {
@@ -193,8 +197,6 @@ export default function Screens({
           ? result.message
           : JSON.stringify(result, null, 2)
       );
-
-      onVerify(barcode.trim());
     } catch (error) {
       setVerificationMessage(
         error instanceof Error
@@ -206,15 +208,24 @@ export default function Screens({
     }
   };
 
+  // Location information card.
   const locationCard = () => (
     <View style={styles.locationCard}>
-      <Ionicons name="location-outline" size={22} color={C.gold} />
+      <Ionicons
+        name="location-outline"
+        size={22}
+        color={C.gold}
+      />
 
       <View style={{ flex: 1 }}>
-        <Text style={styles.locationTitle}>Scan location</Text>
+        <Text style={styles.locationTitle}>
+          Scan location
+        </Text>
+
         <Text style={styles.locationPlace}>
           {scanLocation?.placeName || "Location not available"}
         </Text>
+
         <Text style={styles.locationDetails}>
           {scanLocation?.locationText ||
             "Location will be requested when verification is attempted."}
@@ -223,7 +234,7 @@ export default function Screens({
     </View>
   );
 
-  // CAMERA
+  // CAMERA SCREEN
   if (scannerOpen) {
     return (
       <ScannerScreen
@@ -233,7 +244,7 @@ export default function Screens({
     );
   }
 
-  // PRODUCT RESULTS
+  // PRODUCT RESULTS SCREEN
   if (loading || barcode || message) {
     const resultProduct: ProductInfo | null = product
       ? {
@@ -256,7 +267,11 @@ export default function Screens({
 
         {loading ? (
           <View style={styles.loading}>
-            <ActivityIndicator size="large" color={C.gold} />
+            <ActivityIndicator
+              size="large"
+              color={C.gold}
+            />
+
             <Text style={styles.description}>
               Retrieving product information...
             </Text>
@@ -281,13 +296,19 @@ export default function Screens({
         />
 
         <View style={styles.verificationForm}>
-          <Text style={styles.formTitle}>Verification details</Text>
-          <Text style={styles.formDescription}>
-            Enter the identifiers registered for this product. A barcode
-            lookup alone cannot establish authenticity.
+          <Text style={styles.formTitle}>
+            Verification details
           </Text>
 
-          <Text style={styles.inputLabel}>SERIAL NUMBER</Text>
+          <Text style={styles.formDescription}>
+            Enter the identifiers registered for this product.
+            A barcode lookup alone cannot establish authenticity.
+          </Text>
+
+          <Text style={styles.inputLabel}>
+            SERIAL NUMBER
+          </Text>
+
           <TextInput
             value={serialNumber}
             onChangeText={setSerialNumber}
@@ -297,7 +318,10 @@ export default function Screens({
             style={styles.input}
           />
 
-          <Text style={styles.inputLabel}>QR TOKEN</Text>
+          <Text style={styles.inputLabel}>
+            QR TOKEN
+          </Text>
+
           <TextInput
             value={qrToken}
             onChangeText={setQrToken}
@@ -327,15 +351,23 @@ export default function Screens({
 
         {verificationMessage ? (
           <View style={styles.verificationCard}>
-            <Text style={styles.cardTitle}>Verification response</Text>
+            <Text style={styles.cardTitle}>
+              Verification response
+            </Text>
+
             <Text style={styles.description}>
               {verificationMessage}
             </Text>
           </View>
         ) : null}
 
-        <TouchableOpacity style={styles.secondaryButton} onPress={reset}>
-          <Text style={styles.secondaryText}>Back to VERITY</Text>
+        <TouchableOpacity
+          style={styles.secondaryButton}
+          onPress={reset}
+        >
+          <Text style={styles.secondaryText}>
+            Back to VERITY
+          </Text>
         </TouchableOpacity>
       </ScrollView>
     );
@@ -348,13 +380,18 @@ export default function Screens({
         style={styles.page}
         contentContainerStyle={styles.content}
       >
-        <Text style={styles.eyebrow}>VERITY / PRODUCT CHECK</Text>
-        <Text style={styles.title}>Scan a product.</Text>
+        <Text style={styles.eyebrow}>
+          VERITY / PRODUCT CHECK
+        </Text>
+
+        <Text style={styles.title}>
+          Scan a product.
+        </Text>
 
         <Text style={styles.description}>
           Scan a food product barcode to retrieve available product
-          information. You can then submit its registered identifiers for
-          verification.
+          information. You can then submit its registered identifiers
+          for verification.
         </Text>
 
         <View style={styles.card}>
@@ -364,7 +401,9 @@ export default function Screens({
             color={C.gold}
           />
 
-          <Text style={styles.cardTitle}>Camera scanner</Text>
+          <Text style={styles.cardTitle}>
+            Camera scanner
+          </Text>
 
           {scanLocation ? locationCard() : null}
 
@@ -380,7 +419,9 @@ export default function Screens({
             style={styles.primaryButton}
             onPress={openScanner}
           >
-            <Text style={styles.primaryButtonText}>Open camera scanner</Text>
+            <Text style={styles.primaryButtonText}>
+              Open camera scanner
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -393,23 +434,34 @@ export default function Screens({
     );
   }
 
-  // HISTORY
+  // HISTORY SCREEN
   if (screen === "History") {
     return (
       <ScrollView
         style={styles.page}
         contentContainerStyle={styles.content}
       >
-        <Text style={styles.eyebrow}>YOUR ACTIVITY</Text>
-        <Text style={styles.title}>Scan history</Text>
+        <Text style={styles.eyebrow}>
+          YOUR ACTIVITY
+        </Text>
+
+        <Text style={styles.title}>
+          Scan history
+        </Text>
 
         {records.length > 0 ? (
           records.map((record, index) => (
-            <ScanRow key={index} record={record} />
+            <ScanRow
+              key={index}
+              record={record}
+            />
           ))
         ) : (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>No scans yet</Text>
+            <Text style={styles.cardTitle}>
+              No scans yet
+            </Text>
+
             <Text style={styles.description}>
               Start scanning products to review their available details.
             </Text>
@@ -418,7 +470,9 @@ export default function Screens({
               style={styles.primaryButton}
               onPress={() => onNavigate("Verify")}
             >
-              <Text style={styles.primaryButtonText}>Scan a product</Text>
+              <Text style={styles.primaryButtonText}>
+                Scan a product
+              </Text>
             </TouchableOpacity>
           </View>
         )}
@@ -426,15 +480,20 @@ export default function Screens({
     );
   }
 
-  // PROFILE
+  // PROFILE SCREEN
   if (screen === "Profile") {
     return (
       <ScrollView
         style={styles.page}
         contentContainerStyle={styles.content}
       >
-        <Text style={styles.eyebrow}>YOUR ACCOUNT</Text>
-        <Text style={styles.title}>Profile</Text>
+        <Text style={styles.eyebrow}>
+          YOUR ACCOUNT
+        </Text>
+
+        <Text style={styles.title}>
+          Profile
+        </Text>
 
         <InfoCard
           icon="shield-checkmark-outline"
@@ -445,15 +504,20 @@ export default function Screens({
     );
   }
 
-  // ALERTS
+  // ALERTS SCREEN
   if (screen === "Alerts") {
     return (
       <ScrollView
         style={styles.page}
         contentContainerStyle={styles.content}
       >
-        <Text style={styles.eyebrow}>PRODUCT SAFETY</Text>
-        <Text style={styles.title}>Alerts</Text>
+        <Text style={styles.eyebrow}>
+          PRODUCT SAFETY
+        </Text>
+
+        <Text style={styles.title}>
+          Alerts
+        </Text>
 
         <InfoCard
           icon="notifications-outline"
@@ -464,18 +528,147 @@ export default function Screens({
     );
   }
 
-  // HOME
+  // PRODUCT REGISTRY SCREEN
+  if (screen === "Registry") {
+    return (
+      <ScrollView
+        style={styles.page}
+        contentContainerStyle={styles.content}
+      >
+        <Text style={styles.eyebrow}>
+          VERITY / PRODUCT DATABASE
+        </Text>
+
+        <Text style={styles.title}>
+          Product Registry
+        </Text>
+
+        <Text style={styles.description}>
+          Explore product identification and registration information.
+          Product registration data must be checked against the official
+          verification service.
+        </Text>
+
+        <View style={styles.card}>
+          <MaterialCommunityIcons
+            name="database-search-outline"
+            size={42}
+            color={C.gold}
+          />
+
+          <Text style={styles.cardTitle}>
+            Check a product
+          </Text>
+
+          <Text style={styles.description}>
+            Scan a product barcode to retrieve available product
+            information and submit its registered identifiers
+            for verification.
+          </Text>
+
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={() => onNavigate("Verify")}
+          >
+            <Text style={styles.primaryButtonText}>
+              Check product
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <InfoCard
+          icon="information-circle-outline"
+          title="Important"
+          text="A product appearing in a public product database does not mean it is registered with VERITY or confirmed as genuine."
+        />
+      </ScrollView>
+    );
+  }
+
+  // COMPANY PORTAL SCREEN
+  if (screen === "Company") {
+    return (
+      <ScrollView
+        style={styles.page}
+        contentContainerStyle={styles.content}
+      >
+        <Text style={styles.eyebrow}>
+          VERITY / BUSINESS SOLUTIONS
+        </Text>
+
+        <Text style={styles.title}>
+          Company Portal
+        </Text>
+
+        <Text style={styles.description}>
+          A dedicated space for food manufacturers and authorised
+          brand representatives to manage product authentication.
+        </Text>
+
+        <View style={styles.card}>
+          <MaterialCommunityIcons
+            name="domain"
+            size={42}
+            color={C.gold}
+          />
+
+          <Text style={styles.cardTitle}>
+            Manufacturer dashboard
+          </Text>
+
+          <Text style={styles.description}>
+            The planned company dashboard will support product
+            registration, verification activity monitoring,
+            suspicious scan reports and product-level insights.
+          </Text>
+
+          <View style={styles.statusPanel}>
+            <Text style={styles.statusLabel}>
+              DEVELOPMENT STATUS
+            </Text>
+
+            <Text style={styles.statusDescription}>
+              Company account access and dashboard services
+              are not yet connected.
+            </Text>
+          </View>
+        </View>
+
+        <InfoCard
+          icon="shield-checkmark-outline"
+          title="Authorised access"
+          text="Company accounts should be created and approved by the VERITY administrator. This page does not currently authenticate company users."
+        />
+
+        <TouchableOpacity
+          style={styles.secondaryButton}
+          onPress={() => onNavigate("Verify")}
+        >
+          <Text style={styles.secondaryText}>
+            Return to product verification
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
+    );
+  }
+
+  // HOME FALLBACK
   return (
     <ScrollView
       style={styles.page}
       contentContainerStyle={styles.content}
     >
-      <Text style={styles.eyebrow}>VERITY / PRODUCT INTELLIGENCE</Text>
-      <Text style={styles.title}>Look closer.</Text>
+      <Text style={styles.eyebrow}>
+        VERITY / PRODUCT INTELLIGENCE
+      </Text>
+
+      <Text style={styles.title}>
+        Look closer.
+      </Text>
 
       <Text style={styles.description}>
-        Review food product information and check available verification
-        records before you buy.
+        Review food product information and check available
+        verification records before you buy.
       </Text>
 
       <View style={styles.hero}>
@@ -485,22 +678,28 @@ export default function Screens({
           color={C.gold}
         />
 
-        <Text style={styles.heroTitle}>Know what you're checking.</Text>
+        <Text style={styles.heroTitle}>
+          Know what you're checking.
+        </Text>
 
         <Text style={styles.description}>
-          Scan a product, review its details, and submit its registered
-          identifiers for verification.
+          Scan a product, review its details, and submit its
+          registered identifiers for verification.
         </Text>
 
         <TouchableOpacity
           style={styles.primaryButton}
           onPress={() => onNavigate("Verify")}
         >
-          <Text style={styles.primaryButtonText}>Start scanning</Text>
+          <Text style={styles.primaryButtonText}>
+            Start scanning
+          </Text>
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.sectionTitle}>How it works</Text>
+      <Text style={styles.sectionTitle}>
+        How it works
+      </Text>
 
       <InfoCard
         icon="scan-outline"
@@ -529,6 +728,7 @@ export default function Screens({
   );
 }
 
+// SCREEN STYLES
 const styles = StyleSheet.create({
   page: {
     flex: 1,
@@ -747,5 +947,26 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: C.text,
     marginBottom: 16,
+  },
+
+  statusPanel: {
+    padding: 13,
+    borderRadius: 12,
+    backgroundColor: C.background,
+    marginTop: 8,
+  },
+
+  statusLabel: {
+    color: C.gold,
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1,
+  },
+
+  statusDescription: {
+    color: C.text,
+    fontSize: 13,
+    marginTop: 6,
+    lineHeight: 20,
   },
 });
