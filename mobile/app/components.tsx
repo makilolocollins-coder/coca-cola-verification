@@ -1,3 +1,4 @@
+
 import React from "react";
 import {
   View,
@@ -8,16 +9,21 @@ import {
 } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
+// VERITY design system
 export const C = {
   bg: "#F7F5EF",
+  background: "#F7F5EF",
   white: "#FFFFFF",
+  card: "#FFFFFF",
   navy: "#0D1920",
   navy2: "#17252D",
+  text: "#0D1920",
+  ink: "#192127",
   gold: "#C5A66D",
   goldLight: "#E6D2A7",
-  ink: "#192127",
   muted: "#737772",
   line: "#E9E5DC",
+  border: "#E9E5DC",
   blue: "#55B9F0",
   amber: "#E8B449",
   grey: "#C0C5C7",
@@ -56,11 +62,36 @@ export type ScanRecord = {
 };
 
 export const categories = [
-  { name: "Beverages", sub: "Drinks and juices", image: photos.drinks, icon: "cup-water" },
-  { name: "Dairy", sub: "Milk, cheese, yoghurt", image: photos.dairy, icon: "bottle-soda-outline" },
-  { name: "Grains & Staples", sub: "Rice, flour, cereals", image: photos.grains, icon: "barley" },
-  { name: "Snacks & Packaged", sub: "Biscuits, chips, noodles", image: photos.snacks, icon: "package-variant" },
-  { name: "Oils & Sauces", sub: "Oils, sauces, spreads", image: photos.oils, icon: "bottle-wine-outline" },
+  {
+    name: "Beverages",
+    sub: "Drinks and juices",
+    image: photos.drinks,
+    icon: "cup-water",
+  },
+  {
+    name: "Dairy",
+    sub: "Milk, cheese, yoghurt",
+    image: photos.dairy,
+    icon: "bottle-soda-outline",
+  },
+  {
+    name: "Grains & Staples",
+    sub: "Rice, flour, cereals",
+    image: photos.grains,
+    icon: "barley",
+  },
+  {
+    name: "Snacks & Packaged",
+    sub: "Biscuits, chips, noodles",
+    image: photos.snacks,
+    icon: "package-variant",
+  },
+  {
+    name: "Oils & Sauces",
+    sub: "Oils, sauces, spreads",
+    image: photos.oils,
+    icon: "bottle-wine-outline",
+  },
 ];
 
 export const sections: {
@@ -113,31 +144,63 @@ export function Heading({
   return (
     <View style={styles.heading}>
       <Text style={styles.headingText}>{title}</Text>
+
       {action && onPress ? (
-        <TouchableOpacity style={styles.seeAll} onPress={onPress}>
+        <TouchableOpacity
+          style={styles.seeAll}
+          onPress={onPress}
+        >
           <Text style={styles.seeAllText}>{action}</Text>
-          <Ionicons name="arrow-forward" size={16} color={C.ink} />
+          <Ionicons
+            name="arrow-forward"
+            size={16}
+            color={C.ink}
+          />
         </TouchableOpacity>
       ) : null}
     </View>
   );
 }
 
-export function StatusBadge({ status }: { status: ScanRecord["status"] }) {
+export function StatusBadge({
+  status,
+}: {
+  status: ScanRecord["status"];
+}) {
   const config = {
-    VERIFIED: { color: C.blue, icon: "shield-check-outline" },
-    SUSPICIOUS: { color: C.amber, icon: "alert-outline" },
-    UNVERIFIED: { color: C.grey, icon: "help-circle-outline" },
+    VERIFIED: {
+      color: C.blue,
+      icon: "shield-check-outline",
+    },
+    SUSPICIOUS: {
+      color: C.amber,
+      icon: "alert-outline",
+    },
+    UNVERIFIED: {
+      color: C.grey,
+      icon: "help-circle-outline",
+    },
   }[status];
 
   return (
-    <View style={[styles.badge, { backgroundColor: config.color + "20" }]}>
+    <View
+      style={[
+        styles.badge,
+        { backgroundColor: config.color + "20" },
+      ]}
+    >
       <MaterialCommunityIcons
         name={config.icon as any}
         size={14}
         color={config.color}
       />
-      <Text style={[styles.badgeText, { color: config.color }]}>
+
+      <Text
+        style={[
+          styles.badgeText,
+          { color: config.color },
+        ]}
+      >
         {status}
       </Text>
     </View>
@@ -168,38 +231,62 @@ export function ActionCard({
           color={C.gold}
         />
       </View>
+
       <View style={styles.actionCopy}>
         <Text style={styles.actionTitle}>{title}</Text>
-        <Text style={styles.actionSubtitle}>{subtitle}</Text>
+        <Text style={styles.actionSubtitle}>
+          {subtitle}
+        </Text>
       </View>
-      <Ionicons name="chevron-forward" size={19} color={C.muted} />
+
+      <Ionicons
+        name="chevron-forward"
+        size={19}
+        color={C.muted}
+      />
     </TouchableOpacity>
   );
 }
 
+// Supports both item and record props
 export function ScanRow({
   item,
-  onPress,
+  record,
+  onPress = () => {},
 }: {
-  item: ScanRecord;
-  onPress: () => void;
+  item?: ScanRecord;
+  record?: ScanRecord;
+  onPress?: () => void;
 }) {
+  const scan = item || record;
+
+  if (!scan) return null;
+
   return (
     <TouchableOpacity
       style={styles.scanRow}
       onPress={onPress}
       activeOpacity={0.75}
     >
-      <Image source={{ uri: item.image }} style={styles.scanImage} />
+      <Image
+        source={{ uri: scan.image }}
+        style={styles.scanImage}
+      />
+
       <View style={styles.scanInfo}>
-        <Text style={styles.scanName} numberOfLines={1}>
-          {item.name}
+        <Text
+          style={styles.scanName}
+          numberOfLines={1}
+        >
+          {scan.name}
         </Text>
+
         <Text style={styles.scanMeta}>
-          {item.category} · {item.time}
+          {scan.category} · {scan.time}
         </Text>
       </View>
-      <StatusBadge status={item.status} />
+
+      <StatusBadge status={scan.status} />
     </TouchableOpacity>
   );
 }
@@ -217,7 +304,9 @@ export function ScreenHeader({
     <View style={styles.screenHeader}>
       <Text style={styles.eyebrow}>{eyebrow}</Text>
       <Text style={styles.screenTitle}>{title}</Text>
-      <Text style={styles.screenDescription}>{description}</Text>
+      <Text style={styles.screenDescription}>
+        {description}
+      </Text>
     </View>
   );
 }
@@ -233,7 +322,12 @@ export function InfoCard({
 }) {
   return (
     <View style={styles.infoCard}>
-      <MaterialCommunityIcons name={icon as any} size={25} color={C.gold} />
+      <MaterialCommunityIcons
+        name={icon as any}
+        size={25}
+        color={C.gold}
+      />
+
       <View style={{ flex: 1 }}>
         <Text style={styles.infoTitle}>{title}</Text>
         <Text style={styles.infoText}>{text}</Text>
@@ -251,14 +345,25 @@ export const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
+
   headingText: {
     fontSize: 12,
     fontWeight: "800",
     color: C.ink,
     letterSpacing: 0.5,
   },
-  seeAll: { flexDirection: "row", alignItems: "center", gap: 6 },
-  seeAllText: { fontSize: 12, fontWeight: "600", color: C.ink },
+
+  seeAll: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+
+  seeAllText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: C.ink,
+  },
 
   actionCard: {
     flexDirection: "row",
@@ -271,6 +376,7 @@ export const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 10,
   },
+
   actionIcon: {
     width: 47,
     height: 47,
@@ -279,8 +385,17 @@ export const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  actionCopy: { flex: 1 },
-  actionTitle: { color: C.ink, fontSize: 14, fontWeight: "700" },
+
+  actionCopy: {
+    flex: 1,
+  },
+
+  actionTitle: {
+    color: C.ink,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+
   actionSubtitle: {
     color: C.muted,
     fontSize: 11,
@@ -296,7 +411,11 @@ export const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 14,
   },
-  badgeText: { fontSize: 8, fontWeight: "800" },
+
+  badgeText: {
+    fontSize: 8,
+    fontWeight: "800",
+  },
 
   scanRow: {
     flexDirection: "row",
@@ -306,17 +425,36 @@ export const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.1)",
   },
+
   scanImage: {
     width: 44,
     height: 48,
     borderRadius: 8,
     backgroundColor: C.navy2,
   },
-  scanInfo: { flex: 1, minWidth: 0 },
-  scanName: { color: C.white, fontSize: 12, fontWeight: "600" },
-  scanMeta: { color: C.muted, fontSize: 10, marginTop: 5, lineHeight: 15 },
 
-  screenHeader: { marginBottom: 23 },
+  scanInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  scanName: {
+    color: C.white,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+
+  scanMeta: {
+    color: C.muted,
+    fontSize: 10,
+    marginTop: 5,
+    lineHeight: 15,
+  },
+
+  screenHeader: {
+    marginBottom: 23,
+  },
+
   eyebrow: {
     color: "#99845D",
     fontSize: 10,
@@ -324,6 +462,7 @@ export const styles = StyleSheet.create({
     letterSpacing: 1.5,
     marginBottom: 10,
   },
+
   screenTitle: {
     color: C.navy,
     fontSize: 34,
@@ -331,11 +470,13 @@ export const styles = StyleSheet.create({
     fontFamily: "Georgia",
     marginBottom: 10,
   },
+
   screenDescription: {
     color: C.muted,
     fontSize: 13,
     lineHeight: 21,
   },
+
   infoCard: {
     flexDirection: "row",
     gap: 12,
@@ -345,11 +486,17 @@ export const styles = StyleSheet.create({
     borderRadius: 16,
     marginTop: 14,
   },
+
   infoTitle: {
     color: C.white,
     fontSize: 13,
     fontWeight: "700",
     marginBottom: 5,
   },
-  infoText: { color: "#D0D5D5", fontSize: 11, lineHeight: 17 },
+
+  infoText: {
+    color: "#D0D5D5",
+    fontSize: 11,
+    lineHeight: 17,
+  },
 });
