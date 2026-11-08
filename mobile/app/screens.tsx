@@ -9,6 +9,7 @@ import {
   Image,
   ActivityIndicator,
   StyleSheet,
+  TextInput,
 } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
@@ -21,9 +22,7 @@ import {
 } from "./components";
 
 import ScannerScreen from "./scanner-screen";
-import ResultsScreen, {
-  ProductInfo,
-} from "./results-screen";
+import ResultsScreen, { ProductInfo } from "./results-screen";
 
 import {
   detectLocation,
@@ -60,6 +59,9 @@ export default function Screens({
 
   const [product, setProduct] = useState<Product | null>(null);
   const [barcode, setBarcode] = useState("");
+  const [serialNumber, setSerialNumber] = useState("");
+  const [qrToken, setQrToken] = useState("");
+
   const [message, setMessage] = useState("");
   const [verificationMessage, setVerificationMessage] = useState("");
 
@@ -72,44 +74,46 @@ export default function Screens({
     setVerifying(false);
     setProduct(null);
     setBarcode("");
+    setSerialNumber("");
+    setQrToken("");
     setMessage("");
     setVerificationMessage("");
   };
 
+  // Open the camera independently of GPS.
+  // Location is useful metadata, but should not prevent scanning.
   const openScanner = async () => {
     reset();
+    setScannerOpen(true);
     setLocationLoading(true);
 
     try {
       const location = await detectLocation();
       setScanLocation(location);
-      setScannerOpen(true);
-    } catch (error) {
-      Alert.alert(
-        "Location unavailable",
-        error instanceof Error
-          ? error.message
-          : "Could not retrieve your location. Check your GPS settings and try again."
-      );
+    } catch {
+      setScanLocation(null);
     } finally {
       setLocationLoading(false);
     }
   };
 
   const lookupProduct = async (code: string) => {
-    if (!code.trim() || loading) return;
+    const cleanCode = code.trim();
+    if (!cleanCode || loading) return;
 
-    setBarcode(code.trim());
+    setBarcode(cleanCode);
     setScannerOpen(false);
     setLoading(true);
     setProduct(null);
     setMessage("");
     setVerificationMessage("");
 
+    // This lookup is for product barcodes.
+    // A QR URL or arbitrary QR text is not necessarily a barcode.
     try {
       const response = await fetch(
         `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(
-          code.trim()
+          cleanCode
         )}.json`
       );
 
@@ -139,10 +143,15 @@ export default function Screens({
   };
 
   const handleVerify = async () => {
-    if (!barcode || !scanLocation) {
+    if (!barcode.trim()) {
+      Alert.alert("Missing barcode", "Scan or enter a product barcode first.");
+      return;
+    }
+
+    if (!serialNumber.trim() || !qrToken.trim()) {
       Alert.alert(
-        "Missing information",
-        "Scan a product and obtain its location before attempting verification."
+        "Missing verification details",
+        "Enter the product serial number and QR token. These are required by the current verification service."
       );
       return;
     }
@@ -151,16 +160,30 @@ export default function Screens({
     setVerificationMessage("");
 
     try {
+      // Try to obtain location again if it was unavailable during scanning.
+      let location = scanLocation;
+
+      if (!location) {
+        try {
+          location = await detectLocation();
+          setScanLocation(location);
+        } catch {
+          throw new Error(
+            "Location is unavailable. Enable GPS and grant location permission before verifying."
+          );
+        }
+      }
+
       const result = await verifyBottle({
-        barcode,
-        serial_number: "",
-        qr_token: "",
-        latitude: scanLocation.latitude,
-        longitude: scanLocation.longitude,
-        town: scanLocation.placeName,
+        barcode: barcode.trim(),
+        serial_number: serialNumber.trim(),
+        qr_token: qrToken.trim(),
+        latitude: location.latitude,
+        longitude: location.longitude,
+        town: location.placeName,
         region: "",
         country: "",
-        scan_place: scanLocation.locationText,
+        scan_place: location.locationText,
       });
 
       setVerificationMessage(
@@ -168,10 +191,10 @@ export default function Screens({
           ? result.note
           : typeof result.message === "string"
           ? result.message
-          : JSON.stringify(result)
+          : JSON.stringify(result, null, 2)
       );
 
-      onVerify(barcode);
+      onVerify(barcode.trim());
     } catch (error) {
       setVerificationMessage(
         error instanceof Error
@@ -185,31 +208,22 @@ export default function Screens({
 
   const locationCard = () => (
     <View style={styles.locationCard}>
-      <Ionicons
-        name="location-outline"
-        size={22}
-        color={C.text}
-      />
+      <Ionicons name="location-outline" size={22} color={C.gold} />
 
       <View style={{ flex: 1 }}>
-        <Text style={styles.locationTitle}>
-          Scan location
-        </Text>
-
+        <Text style={styles.locationTitle}>Scan location</Text>
         <Text style={styles.locationPlace}>
-          {scanLocation?.placeName || "Location unavailable"}
+          {scanLocation?.placeName || "Location not available"}
         </Text>
-
         <Text style={styles.locationDetails}>
-          {scanLocation
-            ? scanLocation.locationText
-            : "Coordinates unavailable"}
+          {scanLocation?.locationText ||
+            "Location will be requested when verification is attempted."}
         </Text>
       </View>
     </View>
   );
 
-  // CAMERA SCREEN
+  // CAMERA
   if (scannerOpen) {
     return (
       <ScannerScreen
@@ -236,15 +250,13 @@ export default function Screens({
       <ScrollView
         style={styles.page}
         contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
       >
         {locationCard()}
 
         {loading ? (
           <View style={styles.loading}>
-            <ActivityIndicator
-              size="large"
-              color={C.text}
-            />
+            <ActivityIndicator size="large" color={C.gold} />
             <Text style={styles.description}>
               Retrieving product information...
             </Text>
@@ -268,68 +280,91 @@ export default function Screens({
           onVerify={handleVerify}
         />
 
-        {verifying ? (
-          <ActivityIndicator
-            style={{ marginTop: 16 }}
-            size="small"
-            color={C.text}
+        <View style={styles.verificationForm}>
+          <Text style={styles.formTitle}>Verification details</Text>
+          <Text style={styles.formDescription}>
+            Enter the identifiers registered for this product. A barcode
+            lookup alone cannot establish authenticity.
+          </Text>
+
+          <Text style={styles.inputLabel}>SERIAL NUMBER</Text>
+          <TextInput
+            value={serialNumber}
+            onChangeText={setSerialNumber}
+            placeholder="Enter product serial number"
+            placeholderTextColor={C.muted}
+            autoCapitalize="characters"
+            style={styles.input}
           />
-        ) : null}
+
+          <Text style={styles.inputLabel}>QR TOKEN</Text>
+          <TextInput
+            value={qrToken}
+            onChangeText={setQrToken}
+            placeholder="Enter QR token"
+            placeholderTextColor={C.muted}
+            autoCapitalize="none"
+            style={styles.input}
+          />
+
+          <TouchableOpacity
+            style={[
+              styles.verifyButton,
+              verifying && { opacity: 0.6 },
+            ]}
+            onPress={handleVerify}
+            disabled={verifying}
+          >
+            {verifying ? (
+              <ActivityIndicator color={C.background} />
+            ) : (
+              <Text style={styles.verifyButtonText}>
+                Submit verification
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
 
         {verificationMessage ? (
           <View style={styles.verificationCard}>
-            <Text style={styles.cardTitle}>
-              Verification response
-            </Text>
-
+            <Text style={styles.cardTitle}>Verification response</Text>
             <Text style={styles.description}>
               {verificationMessage}
             </Text>
           </View>
         ) : null}
 
-        <TouchableOpacity
-          style={styles.secondaryButton}
-          onPress={reset}
-        >
-          <Text style={styles.secondaryText}>
-            Back
-          </Text>
+        <TouchableOpacity style={styles.secondaryButton} onPress={reset}>
+          <Text style={styles.secondaryText}>Back to VERITY</Text>
         </TouchableOpacity>
       </ScrollView>
     );
   }
 
-  // SCAN SCREEN
-  if (screen === "scan") {
+  // VERIFY / SCAN SCREEN
+  if (screen === "Verify") {
     return (
       <ScrollView
         style={styles.page}
         contentContainerStyle={styles.content}
       >
-        <Text style={styles.eyebrow}>
-          VERITY / PRODUCT CHECK
-        </Text>
-
-        <Text style={styles.title}>
-          Scan a product.
-        </Text>
+        <Text style={styles.eyebrow}>VERITY / PRODUCT CHECK</Text>
+        <Text style={styles.title}>Scan a product.</Text>
 
         <Text style={styles.description}>
-          Scan a food product barcode to retrieve available
-          information and associate the scan with its location.
+          Scan a food product barcode to retrieve available product
+          information. You can then submit its registered identifiers for
+          verification.
         </Text>
 
         <View style={styles.card}>
           <MaterialCommunityIcons
             name="barcode-scan"
             size={44}
-            color={C.text}
+            color={C.gold}
           />
 
-          <Text style={styles.cardTitle}>
-            Camera scanner
-          </Text>
+          <Text style={styles.cardTitle}>Camera scanner</Text>
 
           {scanLocation ? locationCard() : null}
 
@@ -337,71 +372,53 @@ export default function Screens({
             <ActivityIndicator
               style={{ margin: 18 }}
               size="small"
-              color={C.text}
+              color={C.gold}
             />
           ) : null}
 
           <TouchableOpacity
             style={styles.primaryButton}
             onPress={openScanner}
-            disabled={locationLoading}
           >
-            <Text style={styles.primaryButtonText}>
-              {locationLoading
-                ? "Detecting location..."
-                : "Detect location and scan"}
-            </Text>
+            <Text style={styles.primaryButtonText}>Open camera scanner</Text>
           </TouchableOpacity>
         </View>
 
         <InfoCard
           icon="information-circle-outline"
           title="Product identification"
-          text="Product records may not exist for every barcode. A successful lookup is not proof of authenticity."
+          text="Product databases can help identify products, but a matching barcode is not proof that a physical product is genuine."
         />
       </ScrollView>
     );
   }
 
-  // HISTORY SCREEN
-  if (screen === "history") {
+  // HISTORY
+  if (screen === "History") {
     return (
       <ScrollView
         style={styles.page}
         contentContainerStyle={styles.content}
       >
-        <Text style={styles.eyebrow}>
-          YOUR ACTIVITY
-        </Text>
-
-        <Text style={styles.title}>
-          Scan history
-        </Text>
+        <Text style={styles.eyebrow}>YOUR ACTIVITY</Text>
+        <Text style={styles.title}>Scan history</Text>
 
         {records.length > 0 ? (
           records.map((record, index) => (
-            <ScanRow
-              key={index}
-              record={record}
-            />
+            <ScanRow key={index} record={record} />
           ))
         ) : (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>
-              No scans yet
-            </Text>
-
+            <Text style={styles.cardTitle}>No scans yet</Text>
             <Text style={styles.description}>
               Start scanning products to review their available details.
             </Text>
 
             <TouchableOpacity
               style={styles.primaryButton}
-              onPress={() => onNavigate("scan")}
+              onPress={() => onNavigate("Verify")}
             >
-              <Text style={styles.primaryButtonText}>
-                Scan a product
-              </Text>
+              <Text style={styles.primaryButtonText}>Scan a product</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -409,20 +426,15 @@ export default function Screens({
     );
   }
 
-  // PROFILE SCREEN
-  if (screen === "profile") {
+  // PROFILE
+  if (screen === "Profile") {
     return (
       <ScrollView
         style={styles.page}
         contentContainerStyle={styles.content}
       >
-        <Text style={styles.eyebrow}>
-          YOUR ACCOUNT
-        </Text>
-
-        <Text style={styles.title}>
-          Profile
-        </Text>
+        <Text style={styles.eyebrow}>YOUR ACCOUNT</Text>
+        <Text style={styles.title}>Profile</Text>
 
         <InfoCard
           icon="shield-checkmark-outline"
@@ -433,53 +445,62 @@ export default function Screens({
     );
   }
 
-  // HOME SCREEN
+  // ALERTS
+  if (screen === "Alerts") {
+    return (
+      <ScrollView
+        style={styles.page}
+        contentContainerStyle={styles.content}
+      >
+        <Text style={styles.eyebrow}>PRODUCT SAFETY</Text>
+        <Text style={styles.title}>Alerts</Text>
+
+        <InfoCard
+          icon="notifications-outline"
+          title="No alerts yet"
+          text="Product alerts and suspicious scan notifications will appear here when the alert service is connected."
+        />
+      </ScrollView>
+    );
+  }
+
+  // HOME
   return (
     <ScrollView
       style={styles.page}
       contentContainerStyle={styles.content}
     >
-      <Text style={styles.eyebrow}>
-        VERITY / PRODUCT INTELLIGENCE
-      </Text>
-
-      <Text style={styles.title}>
-        Look closer.
-      </Text>
+      <Text style={styles.eyebrow}>VERITY / PRODUCT INTELLIGENCE</Text>
+      <Text style={styles.title}>Look closer.</Text>
 
       <Text style={styles.description}>
-        Scan food products and review available information before you buy.
+        Review food product information and check available verification
+        records before you buy.
       </Text>
 
       <View style={styles.hero}>
         <MaterialCommunityIcons
           name="barcode-scan"
           size={48}
-          color={C.text}
+          color={C.gold}
         />
 
-        <Text style={styles.heroTitle}>
-          Know what you're checking.
-        </Text>
+        <Text style={styles.heroTitle}>Know what you're checking.</Text>
 
         <Text style={styles.description}>
-          Scan a barcode, review product details, and associate the scan
-          with a location.
+          Scan a product, review its details, and submit its registered
+          identifiers for verification.
         </Text>
 
         <TouchableOpacity
           style={styles.primaryButton}
-          onPress={() => onNavigate("scan")}
+          onPress={() => onNavigate("Verify")}
         >
-          <Text style={styles.primaryButtonText}>
-            Start scanning
-          </Text>
+          <Text style={styles.primaryButtonText}>Start scanning</Text>
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.sectionTitle}>
-        How it works
-      </Text>
+      <Text style={styles.sectionTitle}>How it works</Text>
 
       <InfoCard
         icon="scan-outline"
@@ -496,7 +517,7 @@ export default function Screens({
       <InfoCard
         icon="location-outline"
         title="03. Locate"
-        text="Record GPS coordinates and a readable location where available."
+        text="Record scan coordinates where location permission is available."
       />
 
       <InfoCard
@@ -547,12 +568,16 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     backgroundColor: C.card,
     marginBottom: 18,
+    borderWidth: 1,
+    borderColor: C.border,
   },
 
   hero: {
     padding: 22,
     borderRadius: 24,
     backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
     marginTop: 10,
     marginBottom: 28,
   },
@@ -575,7 +600,7 @@ const styles = StyleSheet.create({
   primaryButton: {
     minHeight: 52,
     borderRadius: 15,
-    backgroundColor: C.text,
+    backgroundColor: C.navy,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 18,
@@ -585,7 +610,7 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     fontSize: 14,
     fontWeight: "700",
-    color: C.background,
+    color: C.white,
   },
 
   secondaryButton: {
@@ -613,7 +638,7 @@ const styles = StyleSheet.create({
     width: "100%",
     height: 200,
     borderRadius: 16,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: C.white,
     marginBottom: 18,
   },
 
@@ -625,6 +650,8 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     backgroundColor: C.card,
     marginBottom: 18,
+    borderWidth: 1,
+    borderColor: C.border,
   },
 
   locationTitle: {
@@ -648,10 +675,70 @@ const styles = StyleSheet.create({
     color: C.muted,
   },
 
+  verificationForm: {
+    padding: 20,
+    borderRadius: 20,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    marginTop: 18,
+  },
+
+  formTitle: {
+    fontSize: 19,
+    fontWeight: "800",
+    color: C.text,
+  },
+
+  formDescription: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: C.muted,
+    marginTop: 8,
+    marginBottom: 18,
+  },
+
+  inputLabel: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.2,
+    color: C.muted,
+    marginBottom: 7,
+    marginTop: 12,
+  },
+
+  input: {
+    minHeight: 50,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    color: C.text,
+    backgroundColor: C.background,
+    fontSize: 14,
+  },
+
+  verifyButton: {
+    minHeight: 52,
+    borderRadius: 14,
+    backgroundColor: C.navy,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 20,
+  },
+
+  verifyButtonText: {
+    color: C.white,
+    fontSize: 14,
+    fontWeight: "800",
+  },
+
   verificationCard: {
     padding: 18,
     borderRadius: 18,
     backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
     marginTop: 18,
   },
 
