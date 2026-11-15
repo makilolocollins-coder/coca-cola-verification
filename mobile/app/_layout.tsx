@@ -14,6 +14,7 @@ import { Session } from "@supabase/supabase-js";
 
 import { supabase } from "../supabase";
 import AuthScreen from "./auth-screen";
+import { AuthProvider } from "../auth-context";
 
 export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
@@ -85,7 +86,7 @@ export default function RootLayout() {
   }
 
   return (
-    <>
+    <AuthProvider session={session}>
       <StatusBar style="dark" />
       <Stack
         screenOptions={{
@@ -93,7 +94,7 @@ export default function RootLayout() {
           contentStyle: { backgroundColor: "#F7F5F0" },
         }}
       />
-    </>
+    </AuthProvider>
   );
 }
 
