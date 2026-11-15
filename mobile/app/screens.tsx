@@ -9,7 +9,6 @@ import {
   Image,
   ActivityIndicator,
   StyleSheet,
-  TextInput,
 } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
@@ -25,7 +24,10 @@ import ScannerScreen from "./scanner-screen";
 import ResultsScreen, { ProductInfo } from "./results-screen";
 
 import { detectLocation, ScanLocation } from "./location-service";
-import { verifyBottle } from "../verification";
+import {
+  verifyBottle,
+  VerificationResponse,
+} from "../verification";
 
 type Props = {
   screen: ScreenName;
@@ -55,12 +57,14 @@ export default function Screens({
 
   const [product, setProduct] = useState<Product | null>(null);
   const [barcode, setBarcode] = useState("");
-  const [serialNumber, setSerialNumber] = useState("");
   const [qrToken, setQrToken] = useState("");
 
   const [message, setMessage] = useState("");
   const [verificationMessage, setVerificationMessage] = useState("");
   const [locationError, setLocationError] = useState("");
+
+  const [verificationResult, setVerificationResult] =
+    useState<VerificationResponse | null>(null);
 
   const [scanLocation, setScanLocation] =
     useState<ScanLocation | null>(null);
@@ -74,16 +78,16 @@ export default function Screens({
     setLocationLoading(false);
     setProduct(null);
     setBarcode("");
-    setSerialNumber("");
     setQrToken("");
     setMessage("");
     setVerificationMessage("");
     setLocationError("");
+    setVerificationResult(null);
     setScanLocation(null);
     setLocationConfirmed(false);
   };
 
-  // STEP 1: Detect location before opening the scanner.
+  // STEP 1: Detect location.
   const prepareLocation = async () => {
     if (locationLoading) return;
 
@@ -94,7 +98,6 @@ export default function Screens({
 
     try {
       const location = await detectLocation();
-
       setScanLocation(location);
     } catch (error) {
       setLocationError(
@@ -107,7 +110,7 @@ export default function Screens({
     }
   };
 
-  // STEP 2: Open the scanner only after location confirmation.
+  // STEP 2: Confirm location before scanning.
   const confirmLocationAndScan = () => {
     if (!scanLocation) {
       Alert.alert(
@@ -122,7 +125,6 @@ export default function Screens({
     setScannerOpen(true);
   };
 
-  // Reopening the scanner uses the already confirmed location.
   const openScanner = () => {
     if (!scanLocation || !locationConfirmed) {
       prepareLocation();
@@ -132,7 +134,7 @@ export default function Screens({
     setScannerOpen(true);
   };
 
-  // QR codes and barcodes are handled separately.
+  // STEP 3: Handle barcode and QR scans separately.
   const handleScan = (code: string) => {
     const scannedValue = code.trim();
 
@@ -142,6 +144,7 @@ export default function Screens({
       return;
     }
 
+    // QR credentials are accepted only after barcode identification.
     if (scannedValue.startsWith(QR_MARKER)) {
       const capturedQr = scannedValue
         .slice(QR_MARKER.length)
@@ -150,34 +153,43 @@ export default function Screens({
       setScannerOpen(false);
 
       if (!capturedQr) {
-        setMessage("The QR code was empty or could not be read.");
+        setMessage("The QR code could not be read. Please try again.");
+        return;
+      }
+
+      if (!barcode) {
+        setMessage(
+          "Scan the product barcode first. Then scan its QR credential."
+        );
         return;
       }
 
       setQrToken(capturedQr);
-      setVerificationMessage("");
-      setMessage(
-        "QR code captured successfully. Enter or scan the product barcode and enter its serial number before submitting verification."
-      );
+      setMessage("QR captured. Authenticating this individual product...");
 
+      // Start verification immediately. No manual serial entry.
+      submitVerification(capturedQr);
       return;
     }
 
+    // A normal barcode starts product identification.
     lookupProduct(scannedValue);
   };
 
-  // Barcode lookup retrieves product information only.
+  // STEP 4: Retrieve general product information.
   const lookupProduct = async (code: string) => {
     const cleanCode = code.trim();
 
-    if (!cleanCode || loading) return;
+    if (!cleanCode || loading || verifying) return;
 
     setBarcode(cleanCode);
+    setQrToken("");
+    setVerificationResult(null);
+    setVerificationMessage("");
     setScannerOpen(false);
     setLoading(true);
     setProduct(null);
     setMessage("");
-    setVerificationMessage("");
 
     try {
       const response = await fetch(
@@ -196,68 +208,56 @@ export default function Screens({
         setProduct(result.product);
 
         setMessage(
-          "Product information found. Compare it with the physical packaging. This lookup does not prove authenticity."
+          "Product information found. Compare it with the physical packaging. This lookup does not prove authenticity. Next, scan the bottle QR code."
         );
       } else {
         setMessage(
-          "No matching product record was found. This does not by itself mean the product is counterfeit."
+          "No matching public product record was found. This does not by itself mean the product is counterfeit. You can still scan the QR credential for registry verification."
         );
       }
     } catch {
       setMessage(
-        "Could not retrieve product information. Check your internet connection and try again."
+        "Could not retrieve public product information. You can still scan the QR credential to check the VERITY registry."
       );
     } finally {
       setLoading(false);
     }
   };
 
-  // Submit verification using the location confirmed before scanning.
-  const handleVerify = async () => {
-    if (!barcode.trim()) {
-      Alert.alert(
-        "Missing barcode",
-        "Scan or enter the product barcode first."
-      );
-      return;
-    }
-
-    if (!serialNumber.trim() || !qrToken.trim()) {
-      Alert.alert(
-        "Missing verification details",
-        "Enter the product serial number and QR token. Both are required by the current verification service."
+  // STEP 5: Send QR token and barcode to Supabase.
+  const submitVerification = async (token: string) => {
+    if (!token.trim() || !barcode.trim()) {
+      setVerificationMessage(
+        "A product barcode and QR credential are required."
       );
       return;
     }
 
     if (!scanLocation || !locationConfirmed) {
-      Alert.alert(
-        "Location not confirmed",
-        "Return to the Verify screen and confirm your location before submitting."
+      setVerificationMessage(
+        "Your scan location has not been confirmed."
       );
       return;
     }
 
+    if (verifying) return;
+
     setVerifying(true);
     setVerificationMessage("");
+    setVerificationResult(null);
 
     try {
       const result = await verifyBottle({
+        qr_token: token.trim(),
         barcode: barcode.trim(),
-        serial_number: serialNumber.trim(),
-        qr_token: qrToken.trim(),
         latitude: scanLocation.latitude,
         longitude: scanLocation.longitude,
-        town: scanLocation.placeName,
-        scan_place: scanLocation.locationText,
       });
 
+      setVerificationResult(result);
+
       setVerificationMessage(
-        typeof result.note === "string"
-          ? result.note
-          : typeof result.message === "string"
-          ? result.message
-          : JSON.stringify(result, null, 2)
+        result.note || "Verification response received."
       );
     } catch (error) {
       setVerificationMessage(
@@ -268,6 +268,27 @@ export default function Screens({
     } finally {
       setVerifying(false);
     }
+  };
+
+  // ResultsScreen button opens QR scanning if no token has been scanned.
+  const handleVerify = () => {
+    if (!barcode) {
+      Alert.alert(
+        "Barcode required",
+        "Scan the product barcode first."
+      );
+      return;
+    }
+
+    if (!qrToken) {
+      setMessage(
+        "Product identified. Scan the QR credential on the individual bottle to continue."
+      );
+      openScanner();
+      return;
+    }
+
+    submitVerification(qrToken);
   };
 
   const locationCard = () => (
@@ -333,11 +354,7 @@ export default function Screens({
 
         {loading ? (
           <View style={styles.loading}>
-            <ActivityIndicator
-              size="large"
-              color={C.gold}
-            />
-
+            <ActivityIndicator size="large" color={C.gold} />
             <Text style={styles.description}>
               Retrieving product information...
             </Text>
@@ -361,100 +378,166 @@ export default function Screens({
           onVerify={handleVerify}
         />
 
+        {/* QR scanning instructions */}
         <View style={styles.verificationForm}>
           <Text style={styles.formTitle}>
-            Verification details
+            Individual bottle authentication
           </Text>
 
           <Text style={styles.formDescription}>
-            Provide the product identifiers registered with the
-            verification service. Product database information
-            alone does not establish authenticity.
+            The barcode identifies the product type. The QR credential
+            identifies the individual bottle in the VERITY registry.
+            Scan the QR code to retrieve its registered serial number.
           </Text>
 
-          <Text style={styles.inputLabel}>
-            PRODUCT BARCODE
-          </Text>
-
-          <TextInput
-            value={barcode}
-            onChangeText={setBarcode}
-            placeholder="Scan or enter product barcode"
-            placeholderTextColor={C.muted}
-            keyboardType="number-pad"
-            style={styles.input}
-          />
-
-          <TouchableOpacity
-            style={styles.scanButton}
-            onPress={openScanner}
-          >
+          <View style={styles.stepRow}>
             <Ionicons
-              name="scan-outline"
-              size={18}
-              color={C.text}
+              name="barcode-outline"
+              size={22}
+              color={C.gold}
             />
-            <Text style={styles.scanButtonText}>
-              Scan barcode or QR code
-            </Text>
-          </TouchableOpacity>
-
-          <Text style={styles.inputLabel}>
-            SERIAL NUMBER
-          </Text>
-
-          <TextInput
-            value={serialNumber}
-            onChangeText={setSerialNumber}
-            placeholder="Enter product serial number"
-            placeholderTextColor={C.muted}
-            autoCapitalize="characters"
-            style={styles.input}
-          />
-
-          <Text style={styles.inputLabel}>
-            QR TOKEN
-          </Text>
-
-          <TextInput
-            value={qrToken}
-            onChangeText={setQrToken}
-            placeholder="Scan QR code or enter token"
-            placeholderTextColor={C.muted}
-            autoCapitalize="none"
-            style={styles.input}
-          />
-
-          {qrToken ? (
-            <Text style={styles.capturedText}>
-              QR data captured. Check that it matches the registered
-              token before submitting.
-            </Text>
-          ) : null}
-
-          <TouchableOpacity
-            style={[
-              styles.verifyButton,
-              verifying && { opacity: 0.6 },
-            ]}
-            onPress={handleVerify}
-            disabled={verifying}
-          >
-            {verifying ? (
-              <ActivityIndicator color={C.background} />
-            ) : (
-              <Text style={styles.verifyButtonText}>
-                Submit verification
+            <View style={{ flex: 1 }}>
+              <Text style={styles.stepTitle}>
+                Product barcode
               </Text>
-            )}
-          </TouchableOpacity>
+              <Text style={styles.stepValue}>
+                {barcode || "Not scanned"}
+              </Text>
+            </View>
+            <Ionicons
+              name="checkmark-circle"
+              size={20}
+              color={C.gold}
+            />
+          </View>
+
+          <View style={styles.stepRow}>
+            <Ionicons
+              name="qr-code-outline"
+              size={22}
+              color={C.gold}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.stepTitle}>
+                Individual bottle QR
+              </Text>
+              <Text style={styles.stepValue}>
+                {verificationResult
+                  ? "QR credential processed"
+                  : qrToken
+                  ? "QR captured"
+                  : "Awaiting QR scan"}
+              </Text>
+            </View>
+            {verificationResult ? (
+              <Ionicons
+                name="checkmark-circle"
+                size={20}
+                color={C.gold}
+              />
+            ) : null}
+          </View>
+
+          {!verificationResult ? (
+            <TouchableOpacity
+              style={styles.verifyButton}
+              onPress={openScanner}
+              disabled={verifying || loading}
+            >
+              {verifying ? (
+                <ActivityIndicator color={C.background} />
+              ) : (
+                <>
+                  <Ionicons
+                    name="qr-code-outline"
+                    size={20}
+                    color={C.white}
+                  />
+                  <Text style={styles.verifyButtonText}>
+                    {qrToken ? "Scan QR again" : "Scan bottle QR code"}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          ) : null}
         </View>
 
-        {verificationMessage ? (
+        {/* Actual registry response */}
+        {verificationResult ? (
           <View style={styles.verificationCard}>
             <Text style={styles.cardTitle}>
-              Verification response
+              VERITY registry response
             </Text>
+
+            <Text style={styles.resultStatus}>
+              {verificationResult.verification}
+            </Text>
+
+            {verificationResult.product?.brand ? (
+              <Text style={styles.resultLine}>
+                Brand: {verificationResult.product.brand}
+              </Text>
+            ) : null}
+
+            {verificationResult.product?.product_name ? (
+              <Text style={styles.resultLine}>
+                Product: {verificationResult.product.product_name}
+              </Text>
+            ) : null}
+
+            {verificationResult.product?.serial_number ? (
+              <View style={styles.serialPanel}>
+                <Text style={styles.serialLabel}>
+                  REGISTERED SERIAL NUMBER
+                </Text>
+                <Text style={styles.serialNumber}>
+                  {verificationResult.product.serial_number}
+                </Text>
+              </View>
+            ) : null}
+
+            {verificationResult.product?.packaging ? (
+              <Text style={styles.resultLine}>
+                Packaging: {verificationResult.product.packaging}
+              </Text>
+            ) : null}
+
+            {verificationResult.product?.batch_number ? (
+              <Text style={styles.resultLine}>
+                Batch: {verificationResult.product.batch_number}
+              </Text>
+            ) : null}
+
+            <View style={styles.riskPanel}>
+              <Text style={styles.riskTitle}>
+                RISK ASSESSMENT
+              </Text>
+
+              <Text style={styles.riskScore}>
+                {verificationResult.risk_level || "NOT AVAILABLE"}
+                {typeof verificationResult.risk_score === "number"
+                  ? ` · ${verificationResult.risk_score}/100`
+                  : ""}
+              </Text>
+
+              {verificationResult.risk_reasons?.length ? (
+                verificationResult.risk_reasons.map((reason, index) => (
+                  <Text key={index} style={styles.resultLine}>
+                    • {reason}
+                  </Text>
+                ))
+              ) : (
+                <Text style={styles.resultLine}>
+                  No risk reasons were reported by the current assessment.
+                </Text>
+              )}
+            </View>
+
+            {typeof verificationResult.previous_scans_24h === "number" ? (
+              <Text style={styles.resultLine}>
+                Previous scans in 24 hours: {verificationResult.previous_scans_24h}
+              </Text>
+            ) : null}
 
             <Text style={styles.description}>
               {verificationMessage}
@@ -462,10 +545,22 @@ export default function Screens({
           </View>
         ) : null}
 
+        {!verificationResult && verificationMessage ? (
+          <View style={styles.verificationCard}>
+            <Text style={styles.cardTitle}>
+              Verification message
+            </Text>
+            <Text style={styles.description}>
+              {verificationMessage}
+            </Text>
+          </View>
+        ) : null}
+
         <Text style={styles.disclaimer}>
-          A successful database response confirms only what the
-          connected registry reports. It does not independently
-          prove the physical product is genuine.
+          A successful registry match confirms that the scanned
+          identifiers match a database record. It does not independently
+          prove that the physical packaging has not been copied or tampered with.
+          GPS coordinates may also be inaccurate or spoofed.
         </Text>
 
         <TouchableOpacity
@@ -473,7 +568,7 @@ export default function Screens({
           onPress={reset}
         >
           <Text style={styles.secondaryText}>
-            Back to VERITY
+            Start a new scan
           </Text>
         </TouchableOpacity>
       </ScrollView>
@@ -519,10 +614,7 @@ export default function Screens({
 
           {locationLoading ? (
             <View style={styles.loading}>
-              <ActivityIndicator
-                size="large"
-                color={C.gold}
-              />
+              <ActivityIndicator size="large" color={C.gold} />
               <Text style={styles.description}>
                 Detecting your location...
               </Text>
@@ -592,8 +684,8 @@ export default function Screens({
           </Text>
 
           <Text style={styles.description}>
-            The camera scanner becomes available after you
-            confirm your detected location.
+            First scan the product barcode. Then scan its individual
+            QR credential to retrieve its registered serial number.
           </Text>
 
           <TouchableOpacity
@@ -663,13 +755,8 @@ export default function Screens({
         style={styles.page}
         contentContainerStyle={styles.content}
       >
-        <Text style={styles.eyebrow}>
-          YOUR ACCOUNT
-        </Text>
-
-        <Text style={styles.title}>
-          Profile
-        </Text>
+        <Text style={styles.eyebrow}>YOUR ACCOUNT</Text>
+        <Text style={styles.title}>Profile</Text>
 
         <InfoCard
           icon="shield-checkmark-outline"
@@ -687,13 +774,8 @@ export default function Screens({
         style={styles.page}
         contentContainerStyle={styles.content}
       >
-        <Text style={styles.eyebrow}>
-          PRODUCT SAFETY
-        </Text>
-
-        <Text style={styles.title}>
-          Alerts
-        </Text>
+        <Text style={styles.eyebrow}>PRODUCT SAFETY</Text>
+        <Text style={styles.title}>Alerts</Text>
 
         <InfoCard
           icon="notifications-outline"
@@ -738,8 +820,7 @@ export default function Screens({
 
           <Text style={styles.description}>
             Scan a product barcode to retrieve available product
-            information and submit its registered identifiers
-            for verification.
+            information and then scan its individual QR credential.
           </Text>
 
           <TouchableOpacity
@@ -755,7 +836,7 @@ export default function Screens({
         <InfoCard
           icon="information-circle-outline"
           title="Important"
-          text="A product appearing in a public product database does not mean it is registered with VERITY or confirmed as genuine."
+          text="A product appearing in a public product database does not mean the product is registered with VERITY or confirmed as genuine."
         />
       </ScrollView>
     );
@@ -850,8 +931,8 @@ export default function Screens({
         </Text>
 
         <Text style={styles.description}>
-          Scan a product, review its details, and submit its
-          registered identifiers for verification.
+          Scan a product barcode, review its details, and
+          authenticate the individual bottle using its QR credential.
         </Text>
 
         <Text style={styles.primaryButtonText}>
@@ -870,21 +951,21 @@ export default function Screens({
       />
 
       <InfoCard
-        icon="search-outline"
-        title="02. Scan"
-        text="Capture the product barcode or QR code."
+        icon="barcode-outline"
+        title="02. Identify"
+        text="Scan the product barcode and review its available information."
       />
 
       <InfoCard
-        icon="location-outline"
-        title="03. Review"
-        text="Compare available product details with the packaging."
+        icon="qr-code-outline"
+        title="03. Authenticate"
+        text="Scan the individual QR credential to retrieve its registered serial number."
       />
 
       <InfoCard
         icon="shield-checkmark-outline"
-        title="04. Verify carefully"
-        text="A barcode lookup alone cannot confirm authenticity."
+        title="04. Review"
+        text="Review the registry response and risk assessment. A registry match alone cannot prove the physical packaging has not been copied."
       />
     </ScrollView>
   );
@@ -1074,55 +1155,33 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
 
-  inputLabel: {
-    fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 1.2,
-    color: C.muted,
-    marginBottom: 7,
-    marginTop: 12,
-  },
-
-  input: {
-    minHeight: 50,
-    borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    color: C.text,
-    backgroundColor: C.background,
-    fontSize: 14,
-  },
-
-  scanButton: {
-    minHeight: 46,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: C.border,
+  stepRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 9,
-    marginTop: 10,
+    gap: 12,
+    paddingVertical: 13,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
   },
 
-  scanButtonText: {
-    color: C.text,
+  stepTitle: {
     fontSize: 13,
     fontWeight: "700",
+    color: C.text,
   },
 
-  capturedText: {
-    color: C.muted,
+  stepValue: {
     fontSize: 12,
-    lineHeight: 18,
-    marginTop: 8,
+    color: C.muted,
+    marginTop: 4,
   },
 
   verifyButton: {
     minHeight: 52,
     borderRadius: 14,
     backgroundColor: C.navy,
+    flexDirection: "row",
+    gap: 10,
     alignItems: "center",
     justifyContent: "center",
     marginTop: 20,
@@ -1141,6 +1200,64 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: C.border,
     marginTop: 18,
+  },
+
+  resultStatus: {
+    fontSize: 21,
+    fontWeight: "800",
+    color: C.gold,
+    marginTop: 12,
+    marginBottom: 14,
+  },
+
+  resultLine: {
+    fontSize: 13,
+    lineHeight: 21,
+    color: C.text,
+    marginTop: 7,
+  },
+
+  serialPanel: {
+    padding: 15,
+    borderRadius: 13,
+    backgroundColor: C.background,
+    marginTop: 15,
+    marginBottom: 12,
+  },
+
+  serialLabel: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.2,
+    color: C.muted,
+  },
+
+  serialNumber: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: C.text,
+    marginTop: 8,
+  },
+
+  riskPanel: {
+    padding: 15,
+    borderRadius: 13,
+    backgroundColor: C.background,
+    marginTop: 18,
+  },
+
+  riskTitle: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.2,
+    color: C.muted,
+  },
+
+  riskScore: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: C.gold,
+    marginTop: 8,
   },
 
   disclaimer: {
