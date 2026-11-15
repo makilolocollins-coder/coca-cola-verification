@@ -51,6 +51,7 @@ export default function Screens({
   const [scannerOpen, setScannerOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const [locationLoading, setLocationLoading] = useState(false);
 
   const [product, setProduct] = useState<Product | null>(null);
   const [barcode, setBarcode] = useState("");
@@ -59,23 +60,75 @@ export default function Screens({
 
   const [message, setMessage] = useState("");
   const [verificationMessage, setVerificationMessage] = useState("");
+  const [locationError, setLocationError] = useState("");
+
   const [scanLocation, setScanLocation] =
     useState<ScanLocation | null>(null);
+
+  const [locationConfirmed, setLocationConfirmed] = useState(false);
 
   const reset = () => {
     setScannerOpen(false);
     setLoading(false);
     setVerifying(false);
+    setLocationLoading(false);
     setProduct(null);
     setBarcode("");
     setSerialNumber("");
     setQrToken("");
     setMessage("");
     setVerificationMessage("");
+    setLocationError("");
     setScanLocation(null);
+    setLocationConfirmed(false);
   };
 
+  // STEP 1: Detect location before opening the scanner.
+  const prepareLocation = async () => {
+    if (locationLoading) return;
+
+    setLocationLoading(true);
+    setLocationError("");
+    setLocationConfirmed(false);
+    setScanLocation(null);
+
+    try {
+      const location = await detectLocation();
+
+      setScanLocation(location);
+    } catch (error) {
+      setLocationError(
+        error instanceof Error
+          ? error.message
+          : "Could not detect your location. Please try again."
+      );
+    } finally {
+      setLocationLoading(false);
+    }
+  };
+
+  // STEP 2: Open the scanner only after location confirmation.
+  const confirmLocationAndScan = () => {
+    if (!scanLocation) {
+      Alert.alert(
+        "Location required",
+        "Detect your location before opening the scanner."
+      );
+      return;
+    }
+
+    setLocationConfirmed(true);
+    setLocationError("");
+    setScannerOpen(true);
+  };
+
+  // Reopening the scanner uses the already confirmed location.
   const openScanner = () => {
+    if (!scanLocation || !locationConfirmed) {
+      prepareLocation();
+      return;
+    }
+
     setScannerOpen(true);
   };
 
@@ -159,6 +212,7 @@ export default function Screens({
     }
   };
 
+  // Submit verification using the location confirmed before scanning.
   const handleVerify = async () => {
     if (!barcode.trim()) {
       Alert.alert(
@@ -176,30 +230,26 @@ export default function Screens({
       return;
     }
 
+    if (!scanLocation || !locationConfirmed) {
+      Alert.alert(
+        "Location not confirmed",
+        "Return to the Verify screen and confirm your location before submitting."
+      );
+      return;
+    }
+
     setVerifying(true);
     setVerificationMessage("");
 
     try {
-      // Request a fresh location for every verification attempt.
-      let location: ScanLocation;
-
-      try {
-        location = await detectLocation();
-        setScanLocation(location);
-      } catch {
-        throw new Error(
-          "Location is unavailable. Enable GPS and grant location permission before verifying."
-        );
-      }
-
       const result = await verifyBottle({
         barcode: barcode.trim(),
         serial_number: serialNumber.trim(),
         qr_token: qrToken.trim(),
-        latitude: location.latitude,
-        longitude: location.longitude,
-        town: location.placeName,
-        scan_place: location.locationText,
+        latitude: scanLocation.latitude,
+        longitude: scanLocation.longitude,
+        town: scanLocation.placeName,
+        scan_place: scanLocation.locationText,
       });
 
       setVerificationMessage(
@@ -230,17 +280,22 @@ export default function Screens({
 
       <View style={{ flex: 1 }}>
         <Text style={styles.locationTitle}>
-          Scan location
+          Confirmed scan location
         </Text>
 
         <Text style={styles.locationPlace}>
-          {scanLocation?.placeName || "Location not recorded yet"}
+          {scanLocation?.placeName || "Location not recorded"}
         </Text>
 
         <Text style={styles.locationDetails}>
-          {scanLocation?.locationText ||
-            "Your current location will be requested when you submit verification."}
+          {scanLocation?.locationText || "No location details available"}
         </Text>
+
+        {scanLocation ? (
+          <Text style={styles.accuracyText}>
+            GPS accuracy: approximately {Math.round(scanLocation.accuracy)} metres
+          </Text>
+        ) : null}
       </View>
     </View>
   );
@@ -441,10 +496,89 @@ export default function Screens({
         </Text>
 
         <Text style={styles.description}>
-          Scan a food product barcode or QR code to retrieve
-          available product information and capture its
-          verification identifiers.
+          Your location must be detected and confirmed before
+          the camera scanner opens. This helps record where
+          each verification attempt takes place.
         </Text>
+
+        <View style={styles.card}>
+          <MaterialCommunityIcons
+            name="map-marker-radius-outline"
+            size={44}
+            color={C.gold}
+          />
+
+          <Text style={styles.cardTitle}>
+            Step 1. Confirm your location
+          </Text>
+
+          <Text style={styles.formDescription}>
+            VERITY needs foreground location permission and a
+            sufficiently accurate GPS reading before scanning.
+          </Text>
+
+          {locationLoading ? (
+            <View style={styles.loading}>
+              <ActivityIndicator
+                size="large"
+                color={C.gold}
+              />
+              <Text style={styles.description}>
+                Detecting your location...
+              </Text>
+            </View>
+          ) : null}
+
+          {locationError ? (
+            <Text style={styles.errorText}>
+              {locationError}
+            </Text>
+          ) : null}
+
+          {scanLocation ? (
+            <View style={styles.locationPreview}>
+              <Text style={styles.locationPlace}>
+                {scanLocation.placeName}
+              </Text>
+
+              <Text style={styles.locationDetails}>
+                {scanLocation.locationText}
+              </Text>
+
+              <Text style={styles.accuracyText}>
+                GPS accuracy: approximately {Math.round(scanLocation.accuracy)} metres
+              </Text>
+
+              <Text style={styles.locationDetails}>
+                Captured: {new Date(scanLocation.capturedAt).toLocaleTimeString()}
+              </Text>
+            </View>
+          ) : null}
+
+          <TouchableOpacity
+            style={[
+              styles.secondaryButton,
+              locationLoading && { opacity: 0.6 },
+            ]}
+            onPress={prepareLocation}
+            disabled={locationLoading}
+          >
+            <Text style={styles.secondaryText}>
+              {scanLocation ? "Detect location again" : "Detect my location"}
+            </Text>
+          </TouchableOpacity>
+
+          {scanLocation ? (
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={confirmLocationAndScan}
+            >
+              <Text style={styles.primaryButtonText}>
+                Confirm location & continue
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
 
         <View style={styles.card}>
           <MaterialCommunityIcons
@@ -454,12 +588,21 @@ export default function Screens({
           />
 
           <Text style={styles.cardTitle}>
-            Camera scanner
+            Step 2. Scan your product
+          </Text>
+
+          <Text style={styles.description}>
+            The camera scanner becomes available after you
+            confirm your detected location.
           </Text>
 
           <TouchableOpacity
-            style={styles.primaryButton}
+            style={[
+              styles.primaryButton,
+              !locationConfirmed && { opacity: 0.45 },
+            ]}
             onPress={openScanner}
+            disabled={!locationConfirmed}
           >
             <Text style={styles.primaryButtonText}>
               Open camera scanner
@@ -470,7 +613,7 @@ export default function Screens({
         <InfoCard
           icon="information-circle-outline"
           title="Product identification"
-          text="Product databases can help identify products, but a matching barcode is not proof that a physical product is genuine."
+          text="Product databases can help identify products, but a matching barcode is not proof that a physical product is genuine. GPS records the scan location; it does not prove product authenticity."
         />
       </ScrollView>
     );
@@ -601,10 +744,7 @@ export default function Screens({
 
           <TouchableOpacity
             style={styles.primaryButton}
-            onPress={() => {
-              reset();
-              // Navigation is handled by the parent app.
-            }}
+            onPress={reset}
           >
             <Text style={styles.primaryButtonText}>
               Use the Verify tab to scan
@@ -725,20 +865,20 @@ export default function Screens({
 
       <InfoCard
         icon="scan-outline"
-        title="01. Scan"
-        text="Capture the product barcode or QR code."
+        title="01. Locate"
+        text="Detect and confirm your GPS location before scanning."
       />
 
       <InfoCard
         icon="search-outline"
-        title="02. Review"
-        text="Compare available product details with the packaging."
+        title="02. Scan"
+        text="Capture the product barcode or QR code."
       />
 
       <InfoCard
         icon="location-outline"
-        title="03. Locate"
-        text="Record scan coordinates when location permission is available."
+        title="03. Review"
+        text="Compare available product details with the packaging."
       />
 
       <InfoCard
@@ -887,6 +1027,28 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 19,
     color: C.muted,
+  },
+
+  accuracyText: {
+    fontSize: 12,
+    lineHeight: 19,
+    color: C.gold,
+    fontWeight: "700",
+    marginTop: 7,
+  },
+
+  locationPreview: {
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: C.background,
+    marginTop: 12,
+  },
+
+  errorText: {
+    color: "#B45353",
+    fontSize: 13,
+    lineHeight: 20,
+    marginTop: 12,
   },
 
   verificationForm: {
