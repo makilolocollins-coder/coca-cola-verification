@@ -25,6 +25,7 @@ type ScannerScreenProps = {
 
 const QR_MARKER = "__VERITY_QR__:";
 
+// Product barcodes only. QR is deliberately excluded.
 const BARCODE_TYPES: BarcodeType[] = [
   "ean13",
   "ean8",
@@ -34,6 +35,11 @@ const BARCODE_TYPES: BarcodeType[] = [
   "code39",
   "code93",
   "itf14",
+];
+
+// Camera can scan both product barcodes and QR credentials.
+const CAMERA_SCAN_TYPES: BarcodeType[] = [
+  ...BARCODE_TYPES,
   "qr",
 ];
 
@@ -60,8 +66,8 @@ export default function ScannerScreen({
     scanLock.current = true;
     setHasScanned(true);
 
-    // Mark QR data so the verification screen
-    // does not mistake it for a product barcode.
+    // QR data is marked so it cannot be mistaken
+    // for a normal product barcode.
     const result =
       type === "qr"
         ? `${QR_MARKER}${cleaned}`
@@ -93,6 +99,8 @@ export default function ScannerScreen({
 
       setProcessingImage(true);
 
+      // Gallery images can identify products using
+      // barcodes only. QR credentials require live camera scanning.
       const detectedCodes =
         await CameraView.scanFromURLAsync(
           result.assets[0].uri,
@@ -101,18 +109,22 @@ export default function ScannerScreen({
 
       if (!detectedCodes?.length) {
         Alert.alert(
-          "No code detected",
-          "We could not find a readable barcode or QR code. Try a clearer photo with the complete code visible."
+          "No barcode detected",
+          "We could not find a readable product barcode. QR credentials must be scanned directly using the VERITY camera."
         );
         return;
       }
 
       const detected = detectedCodes[0];
 
-      if (!detected?.data || !detected?.type) {
+      if (
+        !detected?.data ||
+        !detected?.type ||
+        detected.type === "qr"
+      ) {
         Alert.alert(
-          "Unable to read code",
-          "Please select another image and try again."
+          "Unable to read barcode",
+          "Please select a clearer product barcode image. QR credentials must be scanned directly using the camera."
         );
         return;
       }
@@ -158,8 +170,8 @@ export default function ScannerScreen({
 
         <Text style={styles.text}>
           Allow camera access to scan product barcodes
-          and QR codes. You can also select an existing
-          image from your gallery.
+          and QR verification credentials. You can also
+          select a product barcode image from your gallery.
         </Text>
 
         <TouchableOpacity
@@ -196,7 +208,7 @@ export default function ScannerScreen({
           <Text style={styles.secondaryButtonText}>
             {processingImage
               ? "Reading image..."
-              : "Choose image from gallery"}
+              : "Choose barcode image"}
           </Text>
         </TouchableOpacity>
 
@@ -213,7 +225,7 @@ export default function ScannerScreen({
         style={StyleSheet.absoluteFillObject}
         facing="back"
         barcodeScannerSettings={{
-          barcodeTypes: BARCODE_TYPES,
+          barcodeTypes: CAMERA_SCAN_TYPES,
         }}
         onBarcodeScanned={
           hasScanned ? undefined : handleCameraScan
@@ -239,8 +251,8 @@ export default function ScannerScreen({
           </Text>
 
           <Text style={styles.instruction}>
-            Place the product barcode or QR code
-            inside the scanning frame.
+            Scan the product barcode or its QR
+            verification credential using your camera.
           </Text>
         </View>
 
@@ -281,11 +293,11 @@ export default function ScannerScreen({
               <Text style={styles.uploadTitle}>
                 {processingImage
                   ? "Reading image..."
-                  : "Choose from gallery"}
+                  : "Choose barcode image"}
               </Text>
 
               <Text style={styles.uploadSubtitle}>
-                Scan a barcode or QR code in a photo
+                Gallery scanning is for product barcodes only
               </Text>
             </View>
 
@@ -297,8 +309,9 @@ export default function ScannerScreen({
           </TouchableOpacity>
 
           <Text style={styles.footerText}>
-            A readable code helps identify a product.
-            It does not, by itself, prove authenticity.
+            A barcode identifies a product but does not
+            prove authenticity. QR verification credentials
+            must be scanned directly with the camera.
           </Text>
         </View>
       </View>
