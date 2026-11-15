@@ -4,28 +4,50 @@ import * as Location from "expo-location";
 export type ScanLocation = {
   latitude: number;
   longitude: number;
+  accuracy: number;
+  capturedAt: string;
   placeName: string;
   locationText: string;
 };
 
+const MAX_LOCATION_ACCURACY_METRES = 50;
+
 export async function detectLocation(): Promise<ScanLocation> {
+  const servicesEnabled =
+    await Location.hasServicesEnabledAsync();
+
+  if (!servicesEnabled) {
+    throw new Error(
+      "Your device location is switched off. Turn on GPS and try again."
+    );
+  }
+
   const permission =
     await Location.requestForegroundPermissionsAsync();
 
   if (permission.status !== "granted") {
     throw new Error(
-      "Location permission is required to record where the product was scanned."
+      "VERITY needs location permission before you can scan a product."
     );
   }
 
   const position = await Location.getCurrentPositionAsync({
-    accuracy: Location.Accuracy.Balanced,
+    accuracy: Location.Accuracy.High,
   });
 
-  const latitude = position.coords.latitude;
-  const longitude = position.coords.longitude;
+  const { latitude, longitude, accuracy } = position.coords;
 
-  let placeName = "Unknown location";
+  if (
+    typeof accuracy !== "number" ||
+    !Number.isFinite(accuracy) ||
+    accuracy > MAX_LOCATION_ACCURACY_METRES
+  ) {
+    throw new Error(
+      "Your location is not accurate enough yet. Move to an area with a clearer GPS signal and try again."
+    );
+  }
+
+  let placeName = "Location identified";
   let locationText =
     `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
 
@@ -43,7 +65,8 @@ export async function detectLocation(): Promise<ScanLocation> {
         address.street ||
         address.district ||
         address.city ||
-        "Unknown location";
+        address.region ||
+        "Location identified";
 
       const formattedAddress = [
         address.name,
@@ -61,12 +84,14 @@ export async function detectLocation(): Promise<ScanLocation> {
       }
     }
   } catch {
-    // Keep the GPS coordinates if reverse geocoding fails.
+    // Coordinates remain available if address lookup fails.
   }
 
   return {
     latitude,
     longitude,
+    accuracy,
+    capturedAt: new Date().toISOString(),
     placeName,
     locationText,
   };
