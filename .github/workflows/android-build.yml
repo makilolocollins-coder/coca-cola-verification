@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -23,6 +23,26 @@ jobs:
           cache: npm
           cache-dependency-path: mobile/package-lock.json
 
+      - name: Synchronise package lock
+        working-directory: mobile
+        run: npm install --package-lock-only --ignore-scripts
+
+      - name: Save updated package lock to GitHub
+        shell: bash
+        run: |
+          set -e
+
+          if ! git diff --quiet -- mobile/package-lock.json; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+            git add mobile/package-lock.json
+            git commit -m "Update VERITY dependency lockfile"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          else
+            echo "Package lock is already up to date."
+          fi
+
       - name: Verify scanner files exist
         shell: bash
         run: |
@@ -31,23 +51,11 @@ jobs:
           echo "Current commit:"
           git rev-parse HEAD
 
-          echo "Scanner files found:"
           find "$GITHUB_WORKSPACE/mobile/app" -maxdepth 1 -type f -iname '*scanner*' -print
 
-          echo "Files in mobile/app:"
-          ls -lb "$GITHUB_WORKSPACE/mobile/app/"
+          test -f "$GITHUB_WORKSPACE/mobile/app/scanner-screen.tsx"
+          test -f "$GITHUB_WORKSPACE/mobile/app/screens.tsx"
 
-          test -f "$GITHUB_WORKSPACE/mobile/app/scanner-screen.tsx" || {
-            echo "ERROR: scanner-screen.tsx is missing."
-            exit 1
-          }
-
-          test -f "$GITHUB_WORKSPACE/mobile/app/screens.tsx" || {
-            echo "ERROR: screens.tsx is missing."
-            exit 1
-          }
-
-          echo "Scanner import:"
           grep -n 'scanner-screen' "$GITHUB_WORKSPACE/mobile/app/screens.tsx"
 
       - name: Install dependencies
@@ -60,27 +68,15 @@ jobs:
 
       - name: Verify files before EAS upload
         working-directory: mobile
-        shell: bash
         run: |
           set -e
-
-          echo "Working directory:"
           pwd
-
-          echo "Scanner screen:"
           ls -l app/scanner-screen.tsx
-
-          echo "Screen imports:"
           sed -n '1,50p' app/screens.tsx
-
-          echo "Package lock:"
           ls -l package-lock.json
 
           if [ -f .easignore ]; then
-            echo "Contents of .easignore:"
             cat .easignore
-          else
-            echo "No mobile/.easignore file found."
           fi
 
       - name: Build Android APK
