@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import {
   SafeAreaView,
@@ -14,6 +13,8 @@ import {
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
 import AppScreen from "./screens";
+import FleetScreen from "./fleet-screen";
+import { useAuth } from "../auth-context";
 
 import {
   C,
@@ -68,7 +69,7 @@ const nav: {
 export default function App() {
   const [screen, setScreen] = useState<ScreenName>("Home");
   const [scans] = useState<ScanRecord[]>(sampleScans);
-
+  const { profile, loadingProfile } = useAuth();
   const goTo = (next: ScreenName) => {
     setScreen(next);
   };
@@ -401,6 +402,29 @@ export default function App() {
     </>
   );
 
+
+
+  if (loadingProfile) {
+return (
+<SafeAreaView style={homeStyles.safe}>
+<View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+<Text style={{ color: C.navy }}>Loading account...</Text>
+</View>
+</SafeAreaView>
+);
+}
+
+if (
+!profile ||
+profile.role === "manufacturer" ||
+profile.role === "driver"
+) {
+return <FleetScreen />;
+}
+
+  
+
+  
   return (
     <SafeAreaView style={homeStyles.safe}>
       <StatusBar
