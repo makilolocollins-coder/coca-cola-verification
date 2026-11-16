@@ -41,6 +41,12 @@ export default function FleetScreen() {
     "smartphone" | "dedicated_tracker" | "both"
   >("smartphone");
 
+
+  const [selectedVehicle, setSelectedVehicle] = useState("");
+  const [driverId, setDriverId] = useState("");
+  const [origin, setOrigin] = useState("");
+  const [destination, setDestination] = useState("");
+  
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
