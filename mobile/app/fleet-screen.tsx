@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -18,7 +18,7 @@ type Vehicle = {
   id: string;
   registration_number: string;
   vehicle_name: string | null;
-  tracking_source: string;
+  tracking_source: "smartphone" | "dedicated_tracker" | "both";
   active: boolean;
 };
 
@@ -27,12 +27,18 @@ type Trip = {
   vehicle_id: string;
   origin: string | null;
   destination: string | null;
-  trip_status: string;
+  trip_status: "assigned" | "in_progress" | "completed" | "cancelled";
   created_at: string;
 };
 
+type TripAction = "in_progress" | "completed";
+
 export default function FleetScreen() {
   const { session, profile, signOut } = useAuth();
+
+  const userId = session?.user?.id;
+  const isManufacturer = profile?.role === "manufacturer";
+  const isDriver = profile?.role === "driver";
 
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -50,12 +56,13 @@ export default function FleetScreen() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [updatingTripId, setUpdatingTripId] = useState<string | null>(null);
 
-  const isManufacturer = profile?.role === "manufacturer";
-  const isDriver = profile?.role === "driver";
-
-  const loadDashboard = async () => {
-    if (!session?.user?.id || !profile) return;
+  const loadDashboard = useCallback(async () => {
+    if (!userId || !profile) {
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
 
@@ -66,38 +73,40 @@ export default function FleetScreen() {
           .select(
             "id, registration_number, vehicle_name, tracking_source, active"
           )
-          .eq("manufacturer_id", session.user.id)
+          .eq("manufacturer_id", userId)
           .order("created_at", { ascending: false });
 
         if (error) throw error;
-        setVehicles((data || []) as Vehicle[]);
-      }
 
-      if (isDriver) {
+        setVehicles((data || []) as Vehicle[]);
+      } else if (isDriver) {
         const { data, error } = await supabase
           .from("verity_delivery_trips")
           .select(
             "id, vehicle_id, origin, destination, trip_status, created_at"
           )
-          .eq("driver_id", session.user.id)
+          .eq("driver_id", userId)
           .order("created_at", { ascending: false });
 
         if (error) throw error;
+
         setTrips((data || []) as Trip[]);
       }
-    } catch (error: any) {
-      Alert.alert(
-        "Dashboard unavailable",
-        error?.message || "Unable to load fleet information."
-      );
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to load fleet information.";
+
+      Alert.alert("Dashboard unavailable", message);
     } finally {
       setLoading(false);
     }
-  };
+  }, [userId, profile, isManufacturer, isDriver]);
 
   useEffect(() => {
     loadDashboard();
-  }, [session?.user?.id, profile?.role]);
+  }, [loadDashboard]);
 
   const registerVehicle = async () => {
     if (!registration.trim()) {
@@ -108,7 +117,7 @@ export default function FleetScreen() {
       return;
     }
 
-    if (!session?.user?.id) return;
+    if (!userId || !isManufacturer || saving) return;
 
     setSaving(true);
 
@@ -116,7 +125,7 @@ export default function FleetScreen() {
       const { error } = await supabase
         .from("verity_vehicles")
         .insert({
-          manufacturer_id: session.user.id,
+          manufacturer_id: userId,
           registration_number: registration.trim().toUpperCase(),
           vehicle_name: vehicleName.trim() || null,
           tracking_source: trackingSource,
@@ -129,12 +138,15 @@ export default function FleetScreen() {
       setVehicleName("");
 
       Alert.alert("Vehicle registered", "The vehicle has been added.");
+
       await loadDashboard();
-    } catch (error: any) {
-      Alert.alert(
-        "Registration failed",
-        error?.message || "Unable to register this vehicle."
-      );
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to register this vehicle.";
+
+      Alert.alert("Registration failed", message);
     } finally {
       setSaving(false);
     }
@@ -154,7 +166,7 @@ export default function FleetScreen() {
       return;
     }
 
-    if (!session?.user?.id) return;
+    if (!userId || !isManufacturer || saving) return;
 
     setSaving(true);
 
@@ -163,7 +175,7 @@ export default function FleetScreen() {
         .from("verity_delivery_trips")
         .insert({
           vehicle_id: selectedVehicle,
-          manufacturer_id: session.user.id,
+          manufacturer_id: userId,
           driver_id: driverId.trim(),
           origin: origin.trim(),
           destination: destination.trim(),
@@ -178,25 +190,71 @@ export default function FleetScreen() {
       setDestination("");
 
       Alert.alert("Trip created", "The delivery has been assigned.");
+
       await loadDashboard();
-    } catch (error: any) {
-      Alert.alert(
-        "Trip creation failed",
-        error?.message || "Unable to create this delivery."
-      );
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to create this delivery.";
+
+      Alert.alert("Trip creation failed", message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const updateTripStatus = async (
+    tripId: string,
+    newStatus: TripAction
+  ) => {
+    if (!isDriver || !userId || updatingTripId) return;
+
+    setUpdatingTripId(tripId);
+
+    try {
+      const { error } = await supabase.rpc(
+        "update_driver_trip_status",
+        {
+          p_trip_id: tripId,
+          p_new_status: newStatus,
+        }
+      );
+
+      if (error) throw error;
+
+      Alert.alert(
+        newStatus === "in_progress"
+          ? "Delivery started"
+          : "Delivery completed",
+        newStatus === "in_progress"
+          ? "Your delivery is now in progress."
+          : "Your delivery has been marked as completed."
+      );
+
+      await loadDashboard();
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to update this delivery.";
+
+      Alert.alert("Delivery update failed", message);
+    } finally {
+      setUpdatingTripId(null);
     }
   };
 
   const handleSignOut = async () => {
     try {
       await signOut();
-    } catch (error: any) {
-      Alert.alert(
-        "Sign out failed",
-        error?.message || "Please try again."
-      );
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Please try again.";
+
+      Alert.alert("Sign out failed", message);
     }
   };
 
@@ -204,9 +262,11 @@ export default function FleetScreen() {
     return (
       <View style={styles.center}>
         <Text style={styles.title}>VERITY Fleet</Text>
+
         <Text style={styles.muted}>
           This account does not have an authorised fleet role.
         </Text>
+
         <TouchableOpacity
           style={styles.button}
           onPress={handleSignOut}
@@ -243,25 +303,36 @@ export default function FleetScreen() {
         <>
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Register a vehicle</Text>
+
             <Text style={styles.muted}>
               Add a delivery vehicle to your authorised fleet.
             </Text>
 
-            <Text style={styles.label}>Vehicle registration number</Text>
+            <Text style={styles.label}>
+              Vehicle registration number
+            </Text>
+
             <TextInput
               style={styles.input}
               value={registration}
               onChangeText={setRegistration}
               placeholder="e.g. ABC-123XY"
               autoCapitalize="characters"
+              maxLength={20}
+              editable={!saving}
             />
 
-            <Text style={styles.label}>Vehicle name (optional)</Text>
+            <Text style={styles.label}>
+              Vehicle name (optional)
+            </Text>
+
             <TextInput
               style={styles.input}
               value={vehicleName}
               onChangeText={setVehicleName}
               placeholder="e.g. Lagos delivery truck"
+              maxLength={80}
+              editable={!saving}
             />
 
             <Text style={styles.label}>Tracking equipment</Text>
@@ -280,11 +351,13 @@ export default function FleetScreen() {
                   trackingSource === value && styles.choiceActive,
                 ]}
                 onPress={() => setTrackingSource(value)}
+                disabled={saving}
               >
                 <Text
                   style={[
                     styles.choiceText,
-                    trackingSource === value && styles.choiceTextActive,
+                    trackingSource === value &&
+                      styles.choiceTextActive,
                   ]}
                 >
                   {label}
@@ -293,7 +366,10 @@ export default function FleetScreen() {
             ))}
 
             <TouchableOpacity
-              style={styles.button}
+              style={[
+                styles.button,
+                saving && styles.buttonDisabled,
+              ]}
               onPress={registerVehicle}
               disabled={saving}
             >
@@ -319,12 +395,15 @@ export default function FleetScreen() {
                 <Text style={styles.vehicleName}>
                   {vehicle.vehicle_name || "Delivery vehicle"}
                 </Text>
+
                 <Text style={styles.muted}>
                   Registration: {vehicle.registration_number}
                 </Text>
+
                 <Text style={styles.muted}>
                   Tracking: {vehicle.tracking_source}
                 </Text>
+
                 <Text style={styles.status}>
                   {vehicle.active ? "ACTIVE" : "INACTIVE"}
                 </Text>
@@ -334,6 +413,7 @@ export default function FleetScreen() {
 
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Create delivery trip</Text>
+
             <Text style={styles.muted}>
               Assign a registered vehicle to a driver.
             </Text>
@@ -356,6 +436,7 @@ export default function FleetScreen() {
                         styles.choiceActive,
                     ]}
                     onPress={() => setSelectedVehicle(vehicle.id)}
+                    disabled={saving}
                   >
                     <Text
                       style={[
@@ -374,32 +455,43 @@ export default function FleetScreen() {
             )}
 
             <Text style={styles.label}>Driver account ID</Text>
+
             <TextInput
               style={styles.input}
               value={driverId}
               onChangeText={setDriverId}
               placeholder="Enter driver's account UUID"
               autoCapitalize="none"
+              editable={!saving}
             />
 
             <Text style={styles.label}>Delivery origin</Text>
+
             <TextInput
               style={styles.input}
               value={origin}
               onChangeText={setOrigin}
               placeholder="e.g. Lagos warehouse"
+              maxLength={150}
+              editable={!saving}
             />
 
             <Text style={styles.label}>Delivery destination</Text>
+
             <TextInput
               style={styles.input}
               value={destination}
               onChangeText={setDestination}
               placeholder="e.g. Abuja distribution centre"
+              maxLength={150}
+              editable={!saving}
             />
 
             <TouchableOpacity
-              style={styles.button}
+              style={[
+                styles.button,
+                saving && styles.buttonDisabled,
+              ]}
               onPress={createTrip}
               disabled={
                 saving ||
@@ -416,8 +508,9 @@ export default function FleetScreen() {
         <>
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Assigned deliveries</Text>
+
             <Text style={styles.muted}>
-              Deliveries assigned to your driver account will appear here.
+              Deliveries assigned to your driver account appear here.
             </Text>
           </View>
 
@@ -431,15 +524,58 @@ export default function FleetScreen() {
             trips.map((trip) => (
               <View key={trip.id} style={styles.listCard}>
                 <Text style={styles.vehicleName}>Delivery trip</Text>
+
                 <Text style={styles.muted}>
                   From: {trip.origin || "Not specified"}
                 </Text>
+
                 <Text style={styles.muted}>
                   To: {trip.destination || "Not specified"}
                 </Text>
+
                 <Text style={styles.status}>
                   {trip.trip_status.toUpperCase()}
                 </Text>
+
+                {trip.trip_status === "assigned" && (
+                  <TouchableOpacity
+                    style={[
+                      styles.button,
+                      updatingTripId !== null &&
+                        styles.buttonDisabled,
+                    ]}
+                    disabled={updatingTripId !== null}
+                    onPress={() =>
+                      updateTripStatus(trip.id, "in_progress")
+                    }
+                  >
+                    <Text style={styles.buttonText}>
+                      {updatingTripId === trip.id
+                        ? "Updating..."
+                        : "Start Delivery"}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
+                {trip.trip_status === "in_progress" && (
+                  <TouchableOpacity
+                    style={[
+                      styles.button,
+                      updatingTripId !== null &&
+                        styles.buttonDisabled,
+                    ]}
+                    disabled={updatingTripId !== null}
+                    onPress={() =>
+                      updateTripStatus(trip.id, "completed")
+                    }
+                  >
+                    <Text style={styles.buttonText}>
+                      {updatingTripId === trip.id
+                        ? "Updating..."
+                        : "Complete Delivery"}
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
             ))
           )}
@@ -449,8 +585,11 @@ export default function FleetScreen() {
       <TouchableOpacity
         style={styles.refreshButton}
         onPress={loadDashboard}
+        disabled={loading || saving || updatingTripId !== null}
       >
-        <Text style={styles.refreshText}>Refresh dashboard</Text>
+        <Text style={styles.refreshText}>
+          {loading ? "Refreshing..." : "Refresh dashboard"}
+        </Text>
       </TouchableOpacity>
 
       <TouchableOpacity
@@ -553,6 +692,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginTop: 20,
+  },
+  buttonDisabled: {
+    opacity: 0.55,
   },
   buttonText: {
     color: "#FFFFFF",
