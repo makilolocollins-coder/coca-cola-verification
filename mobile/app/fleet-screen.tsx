@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -35,18 +36,18 @@ export default function FleetScreen() {
 
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [trips, setTrips] = useState<Trip[]>([]);
+
   const [registration, setRegistration] = useState("");
   const [vehicleName, setVehicleName] = useState("");
   const [trackingSource, setTrackingSource] = useState<
     "smartphone" | "dedicated_tracker" | "both"
   >("smartphone");
 
-
   const [selectedVehicle, setSelectedVehicle] = useState("");
   const [driverId, setDriverId] = useState("");
   const [origin, setOrigin] = useState("");
   const [destination, setDestination] = useState("");
-  
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -139,48 +140,55 @@ export default function FleetScreen() {
     }
   };
 
-
   const createTrip = async () => {
-  if (!selectedVehicle || !driverId.trim() || !origin.trim() || !destination.trim()) {
-    Alert.alert("Missing information", "Complete all delivery trip fields.");
-    return;
-  }
+    if (
+      !selectedVehicle ||
+      !driverId.trim() ||
+      !origin.trim() ||
+      !destination.trim()
+    ) {
+      Alert.alert(
+        "Missing information",
+        "Complete all delivery trip fields."
+      );
+      return;
+    }
 
-  if (!session?.user?.id) return;
+    if (!session?.user?.id) return;
 
-  setSaving(true);
+    setSaving(true);
 
-  try {
-    const { error } = await supabase
-      .from("verity_delivery_trips")
-      .insert({
-        vehicle_id: selectedVehicle,
-        manufacturer_id: session.user.id,
-        driver_id: driverId.trim(),
-        origin: origin.trim(),
-        destination: destination.trim(),
-        trip_status: "assigned",
-      });
+    try {
+      const { error } = await supabase
+        .from("verity_delivery_trips")
+        .insert({
+          vehicle_id: selectedVehicle,
+          manufacturer_id: session.user.id,
+          driver_id: driverId.trim(),
+          origin: origin.trim(),
+          destination: destination.trim(),
+          trip_status: "assigned",
+        });
 
-    if (error) throw error;
+      if (error) throw error;
 
-    setSelectedVehicle("");
-    setDriverId("");
-    setOrigin("");
-    setDestination("");
+      setSelectedVehicle("");
+      setDriverId("");
+      setOrigin("");
+      setDestination("");
 
-    Alert.alert("Trip created", "The delivery has been assigned.");
-    await loadDashboard();
-  } catch (error: any) {
-    Alert.alert(
-      "Trip creation failed",
-      error?.message || "Unable to create this delivery."
-    );
-  } finally {
-    setSaving(false);
-  }
-};
-  
+      Alert.alert("Trip created", "The delivery has been assigned.");
+      await loadDashboard();
+    } catch (error: any) {
+      Alert.alert(
+        "Trip creation failed",
+        error?.message || "Unable to create this delivery."
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleSignOut = async () => {
     try {
       await signOut();
@@ -323,6 +331,86 @@ export default function FleetScreen() {
               </View>
             ))
           )}
+
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Create delivery trip</Text>
+            <Text style={styles.muted}>
+              Assign a registered vehicle to a driver.
+            </Text>
+
+            <Text style={styles.label}>Select vehicle</Text>
+
+            {vehicles.filter((v) => v.active).length === 0 ? (
+              <Text style={styles.muted}>
+                Register an active vehicle before creating a trip.
+              </Text>
+            ) : (
+              vehicles
+                .filter((vehicle) => vehicle.active)
+                .map((vehicle) => (
+                  <TouchableOpacity
+                    key={vehicle.id}
+                    style={[
+                      styles.choice,
+                      selectedVehicle === vehicle.id &&
+                        styles.choiceActive,
+                    ]}
+                    onPress={() => setSelectedVehicle(vehicle.id)}
+                  >
+                    <Text
+                      style={[
+                        styles.choiceText,
+                        selectedVehicle === vehicle.id &&
+                          styles.choiceTextActive,
+                      ]}
+                    >
+                      {vehicle.registration_number}
+                      {vehicle.vehicle_name
+                        ? ` - ${vehicle.vehicle_name}`
+                        : ""}
+                    </Text>
+                  </TouchableOpacity>
+                ))
+            )}
+
+            <Text style={styles.label}>Driver account ID</Text>
+            <TextInput
+              style={styles.input}
+              value={driverId}
+              onChangeText={setDriverId}
+              placeholder="Enter driver's account UUID"
+              autoCapitalize="none"
+            />
+
+            <Text style={styles.label}>Delivery origin</Text>
+            <TextInput
+              style={styles.input}
+              value={origin}
+              onChangeText={setOrigin}
+              placeholder="e.g. Lagos warehouse"
+            />
+
+            <Text style={styles.label}>Delivery destination</Text>
+            <TextInput
+              style={styles.input}
+              value={destination}
+              onChangeText={setDestination}
+              placeholder="e.g. Abuja distribution centre"
+            />
+
+            <TouchableOpacity
+              style={styles.button}
+              onPress={createTrip}
+              disabled={
+                saving ||
+                vehicles.filter((v) => v.active).length === 0
+              }
+            >
+              <Text style={styles.buttonText}>
+                {saving ? "Creating trip..." : "Assign delivery"}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </>
       ) : (
         <>
@@ -342,9 +430,7 @@ export default function FleetScreen() {
           ) : (
             trips.map((trip) => (
               <View key={trip.id} style={styles.listCard}>
-                <Text style={styles.vehicleName}>
-                  Delivery trip
-                </Text>
+                <Text style={styles.vehicleName}>Delivery trip</Text>
                 <Text style={styles.muted}>
                   From: {trip.origin || "Not specified"}
                 </Text>
