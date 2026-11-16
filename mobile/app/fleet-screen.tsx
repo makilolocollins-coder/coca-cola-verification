@@ -139,6 +139,48 @@ export default function FleetScreen() {
     }
   };
 
+
+  const createTrip = async () => {
+  if (!selectedVehicle || !driverId.trim() || !origin.trim() || !destination.trim()) {
+    Alert.alert("Missing information", "Complete all delivery trip fields.");
+    return;
+  }
+
+  if (!session?.user?.id) return;
+
+  setSaving(true);
+
+  try {
+    const { error } = await supabase
+      .from("verity_delivery_trips")
+      .insert({
+        vehicle_id: selectedVehicle,
+        manufacturer_id: session.user.id,
+        driver_id: driverId.trim(),
+        origin: origin.trim(),
+        destination: destination.trim(),
+        trip_status: "assigned",
+      });
+
+    if (error) throw error;
+
+    setSelectedVehicle("");
+    setDriverId("");
+    setOrigin("");
+    setDestination("");
+
+    Alert.alert("Trip created", "The delivery has been assigned.");
+    await loadDashboard();
+  } catch (error: any) {
+    Alert.alert(
+      "Trip creation failed",
+      error?.message || "Unable to create this delivery."
+    );
+  } finally {
+    setSaving(false);
+  }
+};
+  
   const handleSignOut = async () => {
     try {
       await signOut();
