@@ -11,8 +11,14 @@ import {
   View,
 } from "react-native";
 
+import * as Location from "expo-location";
+
 import { supabase } from "../supabase";
 import { useAuth } from "../auth-context";
+import {
+  startTripLocationTracking,
+  stopTripLocationTracking,
+} from "./location-tracking";
 
 type Vehicle = {
   id: string;
@@ -107,6 +113,13 @@ export default function FleetScreen() {
   useEffect(() => {
     loadDashboard();
   }, [loadDashboard]);
+
+  // Stop GPS updates when this screen is removed.
+  useEffect(() => {
+    return () => {
+      stopTripLocationTracking();
+    };
+  }, []);
 
   const registerVehicle = async () => {
     if (!registration.trim()) {
@@ -217,6 +230,20 @@ export default function FleetScreen() {
     setUpdatingTripId(tripId);
 
     try {
+      // Request foreground location permission before starting a trip.
+      if (newStatus === "in_progress") {
+        const permission =
+          await Location.requestForegroundPermissionsAsync();
+
+        if (permission.status !== "granted") {
+          Alert.alert(
+            "Location permission required",
+            "Allow VERITY to access your location before starting this delivery."
+          );
+          return;
+        }
+      }
+
       const { error } = await supabase.rpc(
         "update_driver_trip_status",
         {
@@ -227,14 +254,29 @@ export default function FleetScreen() {
 
       if (error) throw error;
 
-      Alert.alert(
-        newStatus === "in_progress"
-          ? "Delivery started"
-          : "Delivery completed",
-        newStatus === "in_progress"
-          ? "Your delivery is now in progress."
-          : "Your delivery has been marked as completed."
-      );
+      if (newStatus === "in_progress") {
+        const tracking =
+          await startTripLocationTracking(tripId);
+
+        if (!tracking.success) {
+          Alert.alert(
+            "Delivery started",
+            `Your delivery is active, but GPS tracking could not start: ${tracking.message}`
+          );
+        } else {
+          Alert.alert(
+            "Delivery started",
+            "Your delivery is active and foreground GPS tracking has started."
+          );
+        }
+      } else {
+        stopTripLocationTracking();
+
+        Alert.alert(
+          "Delivery completed",
+          "Your delivery has been marked as completed. GPS tracking has stopped."
+        );
+      }
 
       await loadDashboard();
     } catch (error: unknown) {
@@ -251,6 +293,7 @@ export default function FleetScreen() {
 
   const handleSignOut = async () => {
     try {
+      stopTripLocationTracking();
       await signOut();
     } catch (error: unknown) {
       const message =
