@@ -152,6 +152,7 @@ export default function FleetScreen() {
     }
   };
 
+  
   const createTrip = async () => {
     if (
       !selectedVehicle ||
@@ -166,11 +167,55 @@ export default function FleetScreen() {
       return;
     }
 
-    if (!userId || !isManufacturer || saving) return;
+    if (
+      !userId ||
+      !isManufacturer ||
+      saving
+    ) {
+      return;
+    }
 
     setSaving(true);
 
     try {
+      const { error } = await supabase.rpc(
+        "create_manufacturer_trip",
+        {
+          p_vehicle_id: selectedVehicle,
+          p_driver_id: driverId.trim(),
+          p_origin: origin.trim(),
+          p_destination: destination.trim(),
+        }
+      );
+
+      if (error) throw error;
+
+      setSelectedVehicle("");
+      setDriverId("");
+      setOrigin("");
+      setDestination("");
+
+      Alert.alert(
+        "Trip created",
+        "The delivery has been securely assigned to the driver."
+      );
+
+      await loadDashboard();
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to create this delivery.";
+
+      Alert.alert("Trip creation failed", message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+
+
+
       const { error } = await supabase
         .from("verity_delivery_trips")
         .insert({
