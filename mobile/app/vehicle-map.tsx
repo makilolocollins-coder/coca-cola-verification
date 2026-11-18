@@ -4,6 +4,7 @@ import {
   StyleSheet,
   View,
   Text,
+  Image,
 } from "react-native";
 
 import {
@@ -18,13 +19,21 @@ export type VehicleLocation = {
   latitude: number;
   longitude: number;
   registration_number: string;
+  heading?: number | null;
 };
 
 type Props = {
   locations: VehicleLocation[];
 };
 
+const VAN_IMAGE = require("../assets/verity-van-marker.png");
+
 export default function VehicleMap({ locations }: Props) {
+  const cameraRef = useRef<React.ComponentRef<typeof Camera>>(null);
+  const hasCentered = useRef(false);
+
+  const first = locations[0];
+
   const geoJSON = useMemo(
     () => ({
       type: "FeatureCollection" as const,
@@ -33,6 +42,7 @@ export default function VehicleMap({ locations }: Props) {
         id: vehicle.id,
         properties: {
           registration_number: vehicle.registration_number,
+          heading: vehicle.heading ?? 0,
         },
         geometry: {
           type: "Point" as const,
@@ -46,10 +56,6 @@ export default function VehicleMap({ locations }: Props) {
     [locations]
   );
 
-  const first = locations[0];
-  const cameraRef = useRef<React.ComponentRef<typeof Camera>>(null);
-  const hasCentered = useRef(false);
-
   useEffect(() => {
     if (!first || hasCentered.current) return;
 
@@ -61,19 +67,18 @@ export default function VehicleMap({ locations }: Props) {
 
     hasCentered.current = true;
   }, [first]);
-  
 
   return (
     <View style={styles.card}>
       <View style={styles.header}>
         <View style={styles.iconBox}>
-          <Text style={styles.icon}>▣</Text>
+          <Text style={styles.icon}>🚚</Text>
         </View>
 
         <View style={styles.headerText}>
           <Text style={styles.title}>Vehicle Live Map</Text>
           <Text style={styles.subtitle}>
-            Location of assigned vehicles
+            Location of assigned delivery vehicles
           </Text>
         </View>
 
@@ -88,7 +93,7 @@ export default function VehicleMap({ locations }: Props) {
           style={styles.map}
           mapStyle="https://tiles.openfreemap.org/styles/liberty"
         >
-           <Camera
+          <Camera
             ref={cameraRef}
             initialViewState={{
               center: first
@@ -98,20 +103,24 @@ export default function VehicleMap({ locations }: Props) {
             }}
           />
 
-
-
-                   <GeoJSONSource
+          <GeoJSONSource
             id="verity-vehicle-locations"
             data={geoJSON}
           >
             <Layer
               id="verity-vehicle-markers"
-              type="circle"
-              paint={{
-                "circle-radius": 9,
-                "circle-color": "#C5A66D",
-                "circle-stroke-width": 3,
-                "circle-stroke-color": "#0D1920",
+              type="symbol"
+              images={{
+                "verity-delivery-van": VAN_IMAGE,
+              }}
+              layout={{
+                "icon-image": "verity-delivery-van",
+                "icon-size": 0.45,
+                "icon-allow-overlap": true,
+                "icon-ignore-placement": true,
+                "icon-rotation-alignment": "map",
+                "icon-rotate": ["get", "heading"],
+                "icon-anchor": "center",
               }}
             />
 
@@ -121,7 +130,7 @@ export default function VehicleMap({ locations }: Props) {
               layout={{
                 "text-field": ["get", "registration_number"],
                 "text-size": 11,
-                "text-offset": [0, 1.5],
+                "text-offset": [0, 2],
                 "text-anchor": "top",
                 "text-allow-overlap": true,
               }}
@@ -131,9 +140,7 @@ export default function VehicleMap({ locations }: Props) {
                 "text-halo-width": 2,
               }}
             />
-          </GeoJSONSource> 
-        
-          
+          </GeoJSONSource>
         </Map>
 
         {locations.length === 0 && (
