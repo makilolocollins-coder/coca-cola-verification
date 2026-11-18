@@ -49,8 +49,12 @@ export async function startTripLocationTracking(
         distanceInterval: 25,
       },
       async (location) => {
-        const { latitude, longitude, accuracy } =
-          location.coords;
+        const {
+          latitude,
+          longitude,
+          accuracy,
+          heading,
+        } = location.coords;
 
         const { error } = await supabase
           .from("verity_vehicle_locations")
@@ -59,6 +63,10 @@ export async function startTripLocationTracking(
             latitude,
             longitude,
             accuracy,
+            heading:
+              heading !== null && heading >= 0
+                ? heading
+                : null,
             source: "smartphone",
           });
 
