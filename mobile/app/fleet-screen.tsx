@@ -15,10 +15,13 @@ import * as Location from "expo-location";
 
 import { supabase } from "../supabase";
 import { useAuth } from "../auth-context";
+
 import {
   startTripLocationTracking,
   stopTripLocationTracking,
 } from "./location-tracking";
+
+import ManufacturerLiveMap from "./manufacturer-live-map";
 
 type Vehicle = {
   id: string;
@@ -51,6 +54,7 @@ export default function FleetScreen() {
 
   const [registration, setRegistration] = useState("");
   const [vehicleName, setVehicleName] = useState("");
+
   const [trackingSource, setTrackingSource] = useState<
     "smartphone" | "dedicated_tracker" | "both"
   >("smartphone");
@@ -179,9 +183,7 @@ export default function FleetScreen() {
       return;
     }
 
-    if (!userId || !isManufacturer || saving) {
-      return;
-    }
+    if (!userId || !isManufacturer || saving) return;
 
     setSaving(true);
 
@@ -230,7 +232,6 @@ export default function FleetScreen() {
     setUpdatingTripId(tripId);
 
     try {
-      // Request foreground location permission before starting a trip.
       if (newStatus === "in_progress") {
         const permission =
           await Location.requestForegroundPermissionsAsync();
@@ -348,6 +349,12 @@ export default function FleetScreen() {
         />
       ) : isManufacturer ? (
         <>
+          {/* Manufacturer vehicle tracking map */}
+          {userId ? (
+            <ManufacturerLiveMap manufacturerId={userId} />
+          ) : null}
+
+          {/* Vehicle registration */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Register a vehicle</Text>
 
@@ -426,6 +433,7 @@ export default function FleetScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* Registered vehicles */}
           <Text style={styles.sectionTitle}>
             Your registered vehicles ({vehicles.length})
           </Text>
@@ -458,6 +466,7 @@ export default function FleetScreen() {
             ))
           )}
 
+          {/* Create delivery */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Create delivery trip</Text>
 
