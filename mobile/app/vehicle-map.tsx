@@ -98,7 +98,9 @@ export default function VehicleMap({ locations }: Props) {
             }}
           />
 
-          <GeoJSONSource
+
+
+                   <GeoJSONSource
             id="verity-vehicle-locations"
             data={geoJSON}
           >
@@ -112,7 +114,26 @@ export default function VehicleMap({ locations }: Props) {
                 "circle-stroke-color": "#0D1920",
               }}
             />
-          </GeoJSONSource>
+
+            <Layer
+              id="verity-vehicle-labels"
+              type="symbol"
+              layout={{
+                "text-field": ["get", "registration_number"],
+                "text-size": 11,
+                "text-offset": [0, 1.5],
+                "text-anchor": "top",
+                "text-allow-overlap": true,
+              }}
+              paint={{
+                "text-color": "#0D1920",
+                "text-halo-color": "#FFFFFF",
+                "text-halo-width": 2,
+              }}
+            />
+          </GeoJSONSource> 
+        
+          
         </Map>
 
         {locations.length === 0 && (
