@@ -22,11 +22,49 @@ export default function AuthScreen() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const forgotPassword = async () => {
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanEmail) {
+      Alert.alert(
+        "Email required",
+        "Enter your email address first."
+      );
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const { error } =
+        await supabase.auth.resetPasswordForEmail(cleanEmail, {
+          redirectTo: "verity://reset-password",
+        });
+
+      if (error) throw error;
+
+      Alert.alert(
+        "Check your email",
+        "If an account exists for this email, Supabase will send a password reset link."
+      );
+    } catch (error) {
+      Alert.alert(
+        "Password reset failed",
+        error instanceof Error ? error.message : "Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const submit = async () => {
     const cleanEmail = email.trim().toLowerCase();
 
     if (!cleanEmail || !password.trim()) {
-      Alert.alert("Missing information", "Enter your email and password.");
+      Alert.alert(
+        "Missing information",
+        "Enter your email and password."
+      );
       return;
     }
 
@@ -36,7 +74,10 @@ export default function AuthScreen() {
     }
 
     if (password.length < 8) {
-      Alert.alert("Password too short", "Use at least 8 characters.");
+      Alert.alert(
+        "Password too short",
+        "Use at least 8 characters."
+      );
       return;
     }
 
@@ -57,7 +98,10 @@ export default function AuthScreen() {
         if (error) throw error;
 
         if (data.session) {
-          Alert.alert("Account created", "Your VERITY account is ready.");
+          Alert.alert(
+            "Account created",
+            "Your VERITY account is ready."
+          );
         } else {
           Alert.alert(
             "Check your email",
@@ -66,17 +110,20 @@ export default function AuthScreen() {
           setMode("login");
         }
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: cleanEmail,
-          password,
-        });
+        const { error } =
+          await supabase.auth.signInWithPassword({
+            email: cleanEmail,
+            password,
+          });
 
         if (error) throw error;
       }
     } catch (error) {
       Alert.alert(
         "Authentication failed",
-        error instanceof Error ? error.message : "Please try again."
+        error instanceof Error
+          ? error.message
+          : "Please try again."
       );
     } finally {
       setLoading(false);
@@ -94,11 +141,15 @@ export default function AuthScreen() {
         </View>
 
         <Text style={styles.brand}>VERITY</Text>
-        <Text style={styles.tagline}>FOOD AUTHENTICATION PLATFORM</Text>
+        <Text style={styles.tagline}>
+          FOOD AUTHENTICATION PLATFORM
+        </Text>
 
         <View style={styles.card}>
           <Text style={styles.heading}>
-            {mode === "login" ? "Welcome back" : "Create your account"}
+            {mode === "login"
+              ? "Welcome back"
+              : "Create your account"}
           </Text>
 
           <Text style={styles.description}>
@@ -152,10 +203,24 @@ export default function AuthScreen() {
               <ActivityIndicator color={C.white} />
             ) : (
               <Text style={styles.buttonText}>
-                {mode === "login" ? "SIGN IN" : "CREATE ACCOUNT"}
+                {mode === "login"
+                  ? "SIGN IN"
+                  : "CREATE ACCOUNT"}
               </Text>
             )}
           </TouchableOpacity>
+
+          {mode === "login" ? (
+            <TouchableOpacity
+              style={styles.switchButton}
+              onPress={forgotPassword}
+              disabled={loading}
+            >
+              <Text style={styles.switchText}>
+                Forgot password?
+              </Text>
+            </TouchableOpacity>
+          ) : null}
 
           <TouchableOpacity
             style={styles.switchButton}
