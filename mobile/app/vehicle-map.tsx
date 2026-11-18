@@ -88,7 +88,8 @@ export default function VehicleMap({ locations }: Props) {
           style={styles.map}
           mapStyle="https://tiles.openfreemap.org/styles/liberty"
         >
-          <Camera
+           <Camera
+            ref={cameraRef}
             initialViewState={{
               center: first
                 ? [first.longitude, first.latitude]
