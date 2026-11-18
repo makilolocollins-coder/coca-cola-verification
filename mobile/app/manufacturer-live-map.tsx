@@ -11,14 +11,20 @@ import {
 import { supabase } from "../supabase";
 import VehicleMap, { VehicleLocation } from "./vehicle-map";
 
+type TrackedVehicle = VehicleLocation & {
+  recorded_at: string;
+};
+
 type Props = {
   manufacturerId: string;
 };
 
+const STALE_AFTER_MS = 2 * 60 * 1000;
+
 export default function ManufacturerLiveMap({
   manufacturerId,
 }: Props) {
-  const [locations, setLocations] = useState<VehicleLocation[]>([]);
+  const [locations, setLocations] = useState<TrackedVehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
@@ -42,7 +48,9 @@ export default function ManufacturerLiveMap({
       }
 
       const tripIds = trips.map((trip) => trip.id);
-      const vehicleIds = [...new Set(trips.map((trip) => trip.vehicle_id))];
+      const vehicleIds = [
+        ...new Set(trips.map((trip) => trip.vehicle_id)),
+      ];
 
       const [
         { data: vehicles, error: vehicleError },
@@ -70,7 +78,7 @@ export default function ManufacturerLiveMap({
         ])
       );
 
-      const latestByTrip = new Map<string, VehicleLocation>();
+      const latestByTrip = new Map<string, TrackedVehicle>();
 
       for (const record of gpsRecords || []) {
         if (latestByTrip.has(record.trip_id)) continue;
@@ -90,6 +98,7 @@ export default function ManufacturerLiveMap({
           latitude: Number(record.latitude),
           longitude: Number(record.longitude),
           registration_number: registration,
+          recorded_at: record.recorded_at,
         });
       }
 
@@ -116,6 +125,38 @@ export default function ManufacturerLiveMap({
 
     return () => clearInterval(interval);
   }, [loadLocations]);
+
+  const isStale = (recordedAt: string) => {
+    const timestamp = new Date(recordedAt).getTime();
+
+    return (
+      !Number.isFinite(timestamp) ||
+      Date.now() - timestamp > STALE_AFTER_MS
+    );
+  };
+
+  const formatAge = (recordedAt: string) => {
+    const timestamp = new Date(recordedAt).getTime();
+
+    if (!Number.isFinite(timestamp)) {
+      return "Unknown update time";
+    }
+
+    const seconds = Math.max(
+      0,
+      Math.floor((Date.now() - timestamp) / 1000)
+    );
+
+    if (seconds < 60) return `${seconds}s ago`;
+
+    const minutes = Math.floor(seconds / 60);
+
+    if (minutes < 60) return `${minutes}m ago`;
+
+    const hours = Math.floor(minutes / 60);
+
+    return `${hours}h ${minutes % 60}m ago`;
+  };
 
   return (
     <View style={styles.container}>
@@ -146,6 +187,64 @@ export default function ManufacturerLiveMap({
                 : "Not updated yet"}
             </Text>
           </View>
+
+          {locations.length > 0 && (
+            <View style={styles.vehicleList}>
+              <Text style={styles.listHeading}>
+                Vehicle GPS status
+              </Text>
+
+              {locations.map((vehicle) => {
+                const stale = isStale(vehicle.recorded_at);
+
+                return (
+                  <View
+                    key={vehicle.id}
+                    style={styles.vehicleRow}
+                  >
+                    <View style={styles.vehicleDetails}>
+                      <Text style={styles.registration}>
+                        {vehicle.registration_number}
+                      </Text>
+
+                      <Text style={styles.gpsTime}>
+                        Last GPS update: {formatAge(vehicle.recorded_at)}
+                      </Text>
+                    </View>
+
+                    <View
+                      style={[
+                        styles.statusBadge,
+                        stale
+                          ? styles.staleBadge
+                          : styles.activeBadge,
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.statusDot,
+                          stale
+                            ? styles.staleDot
+                            : styles.activeDot,
+                        ]}
+                      />
+
+                      <Text
+                        style={[
+                          styles.statusText,
+                          stale
+                            ? styles.staleText
+                            : styles.activeText,
+                        ]}
+                      >
+                        {stale ? "STALE" : "RECENT"}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
 
           {errorMessage ? (
             <Text style={styles.error}>{errorMessage}</Text>
@@ -198,6 +297,77 @@ const styles = StyleSheet.create({
   time: {
     color: "#737772",
     fontSize: 10,
+  },
+  vehicleList: {
+    marginTop: 18,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: "#E9E5DC",
+    padding: 13,
+  },
+  listHeading: {
+    color: "#0D1920",
+    fontSize: 14,
+    fontWeight: "800",
+    marginBottom: 10,
+  },
+  vehicleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#F0EDE6",
+  },
+  vehicleDetails: {
+    flex: 1,
+    marginRight: 8,
+  },
+  registration: {
+    color: "#0D1920",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  gpsTime: {
+    color: "#737772",
+    fontSize: 10,
+    marginTop: 4,
+  },
+  statusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 20,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+  },
+  activeBadge: {
+    backgroundColor: "#E8F3EB",
+  },
+  staleBadge: {
+    backgroundColor: "#F8EAE7",
+  },
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    marginRight: 5,
+  },
+  activeDot: {
+    backgroundColor: "#36834B",
+  },
+  staleDot: {
+    backgroundColor: "#A34E45",
+  },
+  statusText: {
+    fontSize: 9,
+    fontWeight: "800",
+  },
+  activeText: {
+    color: "#36834B",
+  },
+  staleText: {
+    color: "#A34E45",
   },
   error: {
     color: "#A34E45",
