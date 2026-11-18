@@ -4,12 +4,12 @@ import {
   StyleSheet,
   View,
   Text,
-  Image,
 } from "react-native";
 
 import {
   Camera,
   GeoJSONSource,
+  Images,
   Layer,
   Map,
 } from "@maplibre/maplibre-react-native";
@@ -103,6 +103,12 @@ export default function VehicleMap({ locations }: Props) {
             }}
           />
 
+          <Images
+            images={{
+              "verity-delivery-van": VAN_IMAGE,
+            }}
+          />
+
           <GeoJSONSource
             id="verity-vehicle-locations"
             data={geoJSON}
@@ -110,9 +116,6 @@ export default function VehicleMap({ locations }: Props) {
             <Layer
               id="verity-vehicle-markers"
               type="symbol"
-              images={{
-                "verity-delivery-van": VAN_IMAGE,
-              }}
               layout={{
                 "icon-image": "verity-delivery-van",
                 "icon-size": 0.45,
