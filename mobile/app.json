@@ -4,6 +4,7 @@
     "name": "VERITY",
     "slug": "verity-food-authentication",
     "version": "1.0.0",
+    "newArchEnabled": true,
     "scheme": "verity",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
