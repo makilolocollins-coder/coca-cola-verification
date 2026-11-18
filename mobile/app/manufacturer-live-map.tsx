@@ -13,6 +13,7 @@ import VehicleMap, { VehicleLocation } from "./vehicle-map";
 
 type TrackedVehicle = VehicleLocation & {
   recorded_at: string;
+  heading: number | null;
 };
 
 type Props = {
@@ -48,6 +49,7 @@ export default function ManufacturerLiveMap({
       }
 
       const tripIds = trips.map((trip) => trip.id);
+
       const vehicleIds = [
         ...new Set(trips.map((trip) => trip.vehicle_id)),
       ];
@@ -63,7 +65,9 @@ export default function ManufacturerLiveMap({
 
         supabase
           .from("verity_vehicle_locations")
-          .select("trip_id, latitude, longitude, recorded_at")
+          .select(
+            "trip_id, latitude, longitude, recorded_at, heading"
+          )
           .in("trip_id", tripIds)
           .order("recorded_at", { ascending: false }),
       ]);
@@ -93,12 +97,17 @@ export default function ManufacturerLiveMap({
 
         if (!registration) continue;
 
-        latestByTrip.set(record.trip_id, {
-          id: record.trip_id,
+        latestByTrip.set(trip.id, {
+          id: trip.id,
           latitude: Number(record.latitude),
           longitude: Number(record.longitude),
           registration_number: registration,
           recorded_at: record.recorded_at,
+          heading:
+            record.heading !== null &&
+            record.heading !== undefined
+              ? Number(record.heading)
+              : null,
         });
       }
 
