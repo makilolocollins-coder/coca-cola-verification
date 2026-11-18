@@ -6,9 +6,10 @@ import {
   View,
   Text,
   StyleSheet,
+  Linking,
 } from "react-native";
 
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { Session } from "@supabase/supabase-js";
 
@@ -17,15 +18,77 @@ import AuthScreen from "./auth-screen";
 import { AuthProvider } from "../auth-context";
 
 export default function RootLayout() {
+  const router = useRouter();
+
   const [session, setSession] = useState<Session | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
 
   useEffect(() => {
+    let mounted = true;
+
+    const handleRecoveryLink = async (url: string) => {
+      try {
+        if (!url.includes("reset-password")) {
+          return;
+        }
+
+        const hashPart = url.split("#")[1] ?? "";
+        const queryPart = url.split("?")[1]?.split("#")[0] ?? "";
+
+        const hashParams = new URLSearchParams(hashPart);
+        const queryParams = new URLSearchParams(queryPart);
+
+        const accessToken =
+          hashParams.get("access_token") ??
+          queryParams.get("access_token");
+
+        const refreshToken =
+          hashParams.get("refresh_token") ??
+          queryParams.get("refresh_token");
+
+        if (!accessToken || !refreshToken) {
+          console.error("Recovery link is missing authentication tokens.");
+          return;
+        }
+
+        const { error } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+
+        if (error) {
+          console.error("Recovery session failed:", error.message);
+          return;
+        }
+
+        if (mounted) {
+          router.replace("/reset-password");
+        }
+      } catch (error) {
+        console.error("Recovery link processing failed:", error);
+      }
+    };
+
+    const linkingSubscription = Linking.addEventListener(
+      "url",
+      ({ url }) => {
+        handleRecoveryLink(url);
+      }
+    );
+
+    Linking.getInitialURL().then((url) => {
+      if (url) {
+        handleRecoveryLink(url);
+      }
+    });
+
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, currentSession) => {
-      setSession(currentSession);
-      setCheckingSession(false);
+      if (mounted) {
+        setSession(currentSession);
+        setCheckingSession(false);
+      }
     });
 
     supabase.auth
@@ -35,14 +98,21 @@ export default function RootLayout() {
           console.error("Session check failed:", error.message);
         }
 
-        setSession(data.session);
+        if (mounted) {
+          setSession(data.session);
+        }
       })
       .catch((error) => {
         console.error("Session restoration failed:", error);
-        setSession(null);
+
+        if (mounted) {
+          setSession(null);
+        }
       })
       .finally(() => {
-        setCheckingSession(false);
+        if (mounted) {
+          setCheckingSession(false);
+        }
       });
 
     if (AppState.currentState === "active") {
@@ -61,11 +131,13 @@ export default function RootLayout() {
     );
 
     return () => {
+      mounted = false;
+      linkingSubscription.remove();
       subscription.unsubscribe();
       appStateSubscription.remove();
       supabase.auth.stopAutoRefresh();
     };
-  }, []);
+  }, [router]);
 
   if (checkingSession) {
     return (
