@@ -22,6 +22,7 @@ export default function RootLayout() {
 
   const [session, setSession] = useState<Session | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
+  const [recoveryPending, setRecoveryPending] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -47,25 +48,33 @@ export default function RootLayout() {
           queryParams.get("refresh_token");
 
         if (!accessToken || !refreshToken) {
-          console.error("Recovery link is missing authentication tokens.");
+          console.error(
+            "Recovery link is missing authentication tokens."
+          );
           return;
         }
 
-        const { error } = await supabase.auth.setSession({
+        const { data, error } = await supabase.auth.setSession({
           access_token: accessToken,
           refresh_token: refreshToken,
         });
 
         if (error) {
-          console.error("Recovery session failed:", error.message);
+          console.error(
+            "Recovery session failed:",
+            error.message
+          );
           return;
         }
 
-        if (mounted) {
-          router.replace("/reset-password");
+        if (mounted && data.session) {
+          setRecoveryPending(true);
         }
       } catch (error) {
-        console.error("Recovery link processing failed:", error);
+        console.error(
+          "Recovery link processing failed:",
+          error
+        );
       }
     };
 
@@ -76,26 +85,35 @@ export default function RootLayout() {
       }
     );
 
-    Linking.getInitialURL().then((url) => {
-      if (url) {
-        handleRecoveryLink(url);
-      }
-    });
+    Linking.getInitialURL()
+      .then((url) => {
+        if (url) {
+          handleRecoveryLink(url);
+        }
+      })
+      .catch((error) => {
+        console.error("Initial link error:", error);
+      });
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, currentSession) => {
-      if (mounted) {
-        setSession(currentSession);
-        setCheckingSession(false);
+    } = supabase.auth.onAuthStateChange(
+      (_event, currentSession) => {
+        if (mounted) {
+          setSession(currentSession);
+          setCheckingSession(false);
+        }
       }
-    });
+    );
 
     supabase.auth
       .getSession()
       .then(({ data, error }) => {
         if (error) {
-          console.error("Session check failed:", error.message);
+          console.error(
+            "Session check failed:",
+            error.message
+          );
         }
 
         if (mounted) {
@@ -103,7 +121,10 @@ export default function RootLayout() {
         }
       })
       .catch((error) => {
-        console.error("Session restoration failed:", error);
+        console.error(
+          "Session restoration failed:",
+          error
+        );
 
         if (mounted) {
           setSession(null);
@@ -132,18 +153,32 @@ export default function RootLayout() {
 
     return () => {
       mounted = false;
+
       linkingSubscription.remove();
       subscription.unsubscribe();
       appStateSubscription.remove();
+
       supabase.auth.stopAutoRefresh();
     };
-  }, [router]);
+  }, []);
+
+  useEffect(() => {
+    if (session && recoveryPending) {
+      router.replace("/reset-password");
+      setRecoveryPending(false);
+    }
+  }, [session, recoveryPending, router]);
 
   if (checkingSession) {
     return (
       <View style={styles.loading}>
-        <ActivityIndicator size="large" color="#C5A66D" />
-        <Text style={styles.loadingText}>Loading VERITY...</Text>
+        <ActivityIndicator
+          size="large"
+          color="#C5A66D"
+        />
+        <Text style={styles.loadingText}>
+          Loading VERITY...
+        </Text>
       </View>
     );
   }
@@ -160,10 +195,13 @@ export default function RootLayout() {
   return (
     <AuthProvider session={session}>
       <StatusBar style="dark" />
+
       <Stack
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: "#F7F5F0" },
+          contentStyle: {
+            backgroundColor: "#F7F5F0",
+          },
         }}
       />
     </AuthProvider>
