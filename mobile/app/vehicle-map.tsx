@@ -1,5 +1,5 @@
 
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import {
   StyleSheet,
   View,
@@ -47,6 +47,21 @@ export default function VehicleMap({ locations }: Props) {
   );
 
   const first = locations[0];
+  const cameraRef = useRef<React.ComponentRef<typeof Camera>>(null);
+  const hasCentered = useRef(false);
+
+  useEffect(() => {
+    if (!first || hasCentered.current) return;
+
+    cameraRef.current?.flyTo({
+      center: [first.longitude, first.latitude],
+      zoom: 11,
+      duration: 1200,
+    });
+
+    hasCentered.current = true;
+  }, [first]);
+  
 
   return (
     <View style={styles.card}>
